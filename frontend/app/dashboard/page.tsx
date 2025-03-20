@@ -125,23 +125,22 @@ export default function Dashboard() {
         </div>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Vos propriétés</CardTitle>
-            <CardDescription>Propriétés que vous avez créées en tant que propriétaire</CardDescription>
+          <CardHeader className="flex justify-between items-center">
+            <div>
+              <CardTitle>Vos propriétés</CardTitle>
+            </div>
+            <Link href="/properties/create">
+              <Button>Ajouter un bien</Button>
+            </Link>
           </CardHeader>
           <CardContent>
-            {landlordProperties.length > 0 ? (
+            {landlordProperties.length > 0 && (
               <div className="space-y-4">
-                <div className="text-center py-6">
-                <Link href="/properties/create">
-                  <Button>Ajouter un bien</Button>
-                </Link>
-              </div>
                 {landlordProperties.map((property) => (
                   <div key={property.id} className="border rounded-lg p-4">
                     <h3 className="font-semibold text-lg">{property.name}</h3>
                     <p className="text-sm text-gray-500">{property.location}</p>
-                    <p className="mt-2">Dépôt: {property.depositAmount} ETH</p>
+                    <p className="mt-2">Caution: {property.depositAmount} ETH</p>
                     <p className="mt-1">
                       Statut:{" "}
                       <span
@@ -165,15 +164,7 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ))}
-              </div>
-            ) : (
-              <div className="text-center py-6">
-                <p className="text-gray-500 mb-4">Vous n'avez pas encore créé de propriétés</p>
-                <Link href="/properties/create">
-                  <Button>Créer une propriété</Button>
-                </Link>
-              </div>
-            )}
+              </div>)}
           </CardContent>
         </Card>
       </main>

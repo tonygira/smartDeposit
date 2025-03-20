@@ -3,31 +3,6 @@ import { parseAbi } from "viem"
 export const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || ""
 export const SEPOLIA_RPC_URL = process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL || ""
 
-/*
-export const SMART_DEPOSIT_ABI = parseAbi([
-  // Events
-  "event PropertyCreated(uint256 indexed propertyId, address indexed landlord, string name, uint256 depositAmount)",
-  "event DepositMade(uint256 indexed depositId, uint256 indexed propertyId, address indexed tenant, uint256 amount)",
-  "event DepositStatusChanged(uint256 indexed depositId, uint8 status)",
-  "event DisputeRaised(uint256 indexed depositId, address indexed initiator)",
-  "event DisputeResolved(uint256 indexed depositId, bool favorTenant)",
-
-  // Functions
-  "function createProperty(string memory _name, string memory _location, uint256 _depositAmount) external returns (uint256)",
-  "function makeDeposit(uint256 _propertyId) external payable returns (uint256)",
-  "function initiateDispute(uint256 _depositId) external",
-  "function resolveDispute(uint256 _depositId, bool _favorTenant) external",
-  "function releaseDeposit(uint256 _depositId) external",
-  "function refundDeposit(uint256 _depositId) external",
-
-  // View functions
-  "function getLandlordProperties(address _landlord) external view returns (uint256[] memory)",
-  "function getTenantDeposits(address _tenant) external view returns (uint256[] memory)",
-  "function getPropertyDetails(uint256 _propertyId) external view returns (uint256 id, address landlord, string memory name, string memory location, uint256 depositAmount, bool isActive)",
-  "function getDepositDetails(uint256 _depositId) external view returns (uint256 id, uint256 propertyId, address tenant, uint256 amount, uint256 timestamp, uint8 status)",
-])*/
-
-
 export const SMART_DEPOSIT_ABI = [
     {
       "anonymous": false,
@@ -199,6 +174,19 @@ export const SMART_DEPOSIT_ABI = [
           "type": "uint256"
         }
       ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_propertyId",
+          "type": "uint256"
+        }
+      ],
+      "name": "deleteProperty",
+      "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
     },
@@ -431,7 +419,7 @@ export const SMART_DEPOSIT_ABI = [
       "type": "function"
     }
   ]
-
+  
 export enum PropertyStatus {
   NOT_RENTED = 0,
   RENTED = 1,

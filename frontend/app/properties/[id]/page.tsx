@@ -5,11 +5,12 @@ import { useParams, useRouter } from "next/navigation"
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi"
 import { formatEther, parseEther } from "viem"
 import { Header } from "@/components/header"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getPropertyStatusText } from "@/lib/contract"
+import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getPropertyStatusText, PropertyStatus } from "@/lib/contract"
 import { useToast } from "@/hooks/use-toast"
-import { MapPin, DollarSign, User } from "lucide-react"
+import { MapPin, DollarSign, User, Loader2, CheckCircle, AlertCircle } from "lucide-react"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 
 export default function PropertyDetails() {
   const params = useParams()
@@ -18,11 +19,17 @@ export default function PropertyDetails() {
   const { toast } = useToast()
   const [property, setProperty] = useState<any>(null)
   const [isLandlord, setIsLandlord] = useState(false)
+  
+  // Transaction status
+  const [transactionStatus, setTransactionStatus] = useState<"idle" | "pending" | "confirming" | "success" | "error">("idle")
+  const [txType, setTxType] = useState<"delete" | "deposit" | "refund" | "dispute" | "resolve" | "request" | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [txHash, setTxHash] = useState<string | null>(null)
 
   const propertyId = Number(params.id)
 
   // Fetch property details
-  const { data: propertyData, isLoading } = useReadContract({
+  const { data: propertyData, isLoading, refetch } = useReadContract({
     address: CONTRACT_ADDRESS as `0x${string}`,
     abi: SMART_DEPOSIT_ABI,
     functionName: "getPropertyDetails",
@@ -48,7 +55,8 @@ export default function PropertyDetails() {
         name,
         location,
         depositAmount: formatEther(depositAmount),
-        status: getPropertyStatusText(status)
+        status: getPropertyStatusText(status),
+        statusCode: status
       }
 
       setProperty(propertyObj)
@@ -59,14 +67,177 @@ export default function PropertyDetails() {
   // Make deposit
   const { data: depositHash, isPending: isDepositPending, writeContract: writeDepositContract } = useWriteContract()
 
-  const { isLoading: isDepositConfirming, isSuccess: isDepositConfirmed } = useWaitForTransactionReceipt({
+  const { isLoading: isDepositConfirming, isSuccess: isDepositConfirmed, error: depositError } = useWaitForTransactionReceipt({
     hash: depositHash,
   })
+  
+  // Handle delete property
+  const { data: deleteHash, isPending: isDeletePending, writeContract: writeDeleteContract } = useWriteContract()
+
+  const { isLoading: isDeleteConfirming, isSuccess: isDeleteConfirmed, error: deleteError } = useWaitForTransactionReceipt({
+    hash: deleteHash,
+  })
+  
+  // Request deposit (for landlord)
+  const { data: requestHash, isPending: isRequestPending, writeContract: writeRequestContract } = useWriteContract()
+  
+  const { isLoading: isRequestConfirming, isSuccess: isRequestConfirmed, error: requestError } = useWaitForTransactionReceipt({
+    hash: requestHash,
+  })
+  
+  // Refund deposit (for landlord)
+  const { data: refundHash, isPending: isRefundPending, writeContract: writeRefundContract } = useWriteContract()
+  
+  const { isLoading: isRefundConfirming, isSuccess: isRefundConfirmed, error: refundError } = useWaitForTransactionReceipt({
+    hash: refundHash,
+  })
+  
+  // Initiate dispute (for landlord)
+  const { data: disputeHash, isPending: isDisputePending, writeContract: writeDisputeContract } = useWriteContract()
+  
+  const { isLoading: isDisputeConfirming, isSuccess: isDisputeConfirmed, error: disputeError } = useWaitForTransactionReceipt({
+    hash: disputeHash,
+  })
+  
+  // Resolve dispute (for landlord)
+  const { data: resolveHash, isPending: isResolvePending, writeContract: writeResolveContract } = useWriteContract()
+  
+  const { isLoading: isResolveConfirming, isSuccess: isResolveConfirmed, error: resolveError } = useWaitForTransactionReceipt({
+    hash: resolveHash,
+  })
+
+  // Update transaction status based on contract states
+  useEffect(() => {
+    if (txType === "delete") {
+      if (isDeletePending) {
+        setTransactionStatus("pending");
+      } else if (isDeleteConfirming) {
+        setTransactionStatus("confirming");
+      } else if (isDeleteConfirmed) {
+        setTransactionStatus("success");
+      }
+      
+      if (deleteHash) {
+        setTxHash(deleteHash);
+      }
+      
+      if (deleteError) {
+        setTransactionStatus("error");
+        setError("La transaction de suppression a échoué. Veuillez réessayer.");
+      }
+    } else if (txType === "deposit") {
+      if (isDepositPending) {
+        setTransactionStatus("pending");
+      } else if (isDepositConfirming) {
+        setTransactionStatus("confirming");
+      } else if (isDepositConfirmed) {
+        setTransactionStatus("success");
+      }
+      
+      if (depositHash) {
+        setTxHash(depositHash);
+      }
+      
+      if (depositError) {
+        setTransactionStatus("error");
+        setError("La transaction de dépôt a échoué. Veuillez réessayer.");
+      }
+    } else if (txType === "refund") {
+      if (isRefundPending) {
+        setTransactionStatus("pending");
+      } else if (isRefundConfirming) {
+        setTransactionStatus("confirming");
+      } else if (isRefundConfirmed) {
+        setTransactionStatus("success");
+      }
+      
+      if (refundHash) {
+        setTxHash(refundHash);
+      }
+      
+      if (refundError) {
+        setTransactionStatus("error");
+        setError("La transaction de remboursement a échoué. Veuillez réessayer.");
+      }
+    } else if (txType === "dispute") {
+      if (isDisputePending) {
+        setTransactionStatus("pending");
+      } else if (isDisputeConfirming) {
+        setTransactionStatus("confirming");
+      } else if (isDisputeConfirmed) {
+        setTransactionStatus("success");
+      }
+      
+      if (disputeHash) {
+        setTxHash(disputeHash);
+      }
+      
+      if (disputeError) {
+        setTransactionStatus("error");
+        setError("La transaction d'ouverture de litige a échoué. Veuillez réessayer.");
+      }
+    } else if (txType === "resolve") {
+      if (isResolvePending) {
+        setTransactionStatus("pending");
+      } else if (isResolveConfirming) {
+        setTransactionStatus("confirming");
+      } else if (isResolveConfirmed) {
+        setTransactionStatus("success");
+      }
+      
+      if (resolveHash) {
+        setTxHash(resolveHash);
+      }
+      
+      if (resolveError) {
+        setTransactionStatus("error");
+        setError("La transaction de résolution de litige a échoué. Veuillez réessayer.");
+      }
+    } else if (txType === "request") {
+      if (isRequestPending) {
+        setTransactionStatus("pending");
+      } else if (isRequestConfirming) {
+        setTransactionStatus("confirming");
+      } else if (isRequestConfirmed) {
+        setTransactionStatus("success");
+      }
+      
+      if (requestHash) {
+        setTxHash(requestHash);
+      }
+      
+      if (requestError) {
+        setTransactionStatus("error");
+        setError("La transaction de demande de caution a échoué. Veuillez réessayer.");
+      }
+    }
+  }, [
+    txType,
+    isDeletePending, isDeleteConfirming, isDeleteConfirmed, deleteHash, deleteError,
+    isDepositPending, isDepositConfirming, isDepositConfirmed, depositHash, depositError,
+    isRefundPending, isRefundConfirming, isRefundConfirmed, refundHash, refundError,
+    isDisputePending, isDisputeConfirming, isDisputeConfirmed, disputeHash, disputeError,
+    isResolvePending, isResolveConfirming, isResolveConfirmed, resolveHash, resolveError,
+    isRequestPending, isRequestConfirming, isRequestConfirmed, requestHash, requestError,
+  ]);
+  
+  // Reset transaction tracking
+  const resetTransaction = () => {
+    setTransactionStatus("idle");
+    setTxType(null);
+    setError(null);
+    setTxHash(null);
+    refetch(); // Refresh property data
+  };
 
   const handleMakeDeposit = async () => {
     if (!property) return
 
     try {
+      setTransactionStatus("pending");
+      setTxType("deposit");
+      setError(null);
+      
       writeDepositContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: SMART_DEPOSIT_ABI,
@@ -75,25 +246,137 @@ export default function PropertyDetails() {
         value: parseEther(property.depositAmount),
       })
     } catch (error) {
-      console.error("Error making deposit:", error)
-      toast({
-        title: "Error",
-        description: "Failed to make deposit. Please try again.",
-        variant: "destructive",
-      })
+      console.error("Erreur lors de la création de la caution:", error)
+      setTransactionStatus("error");
+      setError("Une erreur s'est produite lors de l'envoi de la transaction de caution.");
     }
   }
 
-  // Handle deposit confirmation
-  useEffect(() => {
-    if (isDepositConfirmed) {
-      toast({
-        title: "Success",
-        description: "Deposit made successfully!",
+  const handleDeleteProperty = async () => {
+    if (!property) return
+
+    try {
+      setTransactionStatus("pending");
+      setTxType("delete");
+      setError(null);
+      
+      writeDeleteContract({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        abi: SMART_DEPOSIT_ABI,
+        functionName: "deleteProperty", 
+        args: [BigInt(propertyId)],
       })
-      router.push("/deposits")
+    } catch (error) {
+      console.error("Erreur lors de la suppression du bien:", error)
+      setTransactionStatus("error");
+      setError("Une erreur s'est produite lors de l'envoi de la transaction de suppression.");
     }
-  }, [isDepositConfirmed, router, toast])
+  }
+  
+  const handleRequestDeposit = async () => {
+    if (!property) return
+    
+    try {
+      setTransactionStatus("pending");
+      setTxType("request");
+      setError(null);
+      
+      toast({
+        title: "Information",
+        description: "Cette fonctionnalité sera bientôt disponible.",
+      })
+      // Cette fonction sera implémentée plus tard
+      setTransactionStatus("error");
+      setError("Cette fonctionnalité n'est pas encore implémentée.");
+    } catch (error) {
+      console.error("Erreur lors de la demande de caution:", error)
+      setTransactionStatus("error");
+      setError("Une erreur s'est produite lors de l'envoi de la demande de caution.");
+    }
+  }
+  
+  const handleRefundDeposit = async () => {
+    if (!property) return
+    
+    try {
+      setTransactionStatus("pending");
+      setTxType("refund");
+      setError(null);
+      
+      writeRefundContract({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        abi: SMART_DEPOSIT_ABI,
+        functionName: "refundDeposit",
+        args: [BigInt(propertyId)],
+      })
+    } catch (error) {
+      console.error("Erreur lors du remboursement de la caution:", error)
+      setTransactionStatus("error");
+      setError("Une erreur s'est produite lors de l'envoi de la transaction de remboursement.");
+    }
+  }
+  
+  const handleInitiateDispute = async () => {
+    if (!property) return
+    
+    try {
+      setTransactionStatus("pending");
+      setTxType("dispute");
+      setError(null);
+      
+      writeDisputeContract({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        abi: SMART_DEPOSIT_ABI,
+        functionName: "initiateDispute",
+        args: [BigInt(propertyId)],
+      })
+    } catch (error) {
+      console.error("Erreur lors de l'ouverture du litige:", error)
+      setTransactionStatus("error");
+      setError("Une erreur s'est produite lors de l'envoi de la transaction d'ouverture de litige.");
+    }
+  }
+  
+  const handleResolveDispute = async () => {
+    if (!property) return
+    
+    try {
+      setTransactionStatus("pending");
+      setTxType("resolve");
+      setError(null);
+      
+      writeResolveContract({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        abi: SMART_DEPOSIT_ABI,
+        functionName: "resolveDispute",
+        args: [BigInt(propertyId), true], // true = en faveur du locataire (à adapter selon besoin)
+      })
+    } catch (error) {
+      console.error("Erreur lors de la résolution du litige:", error)
+      setTransactionStatus("error");
+      setError("Une erreur s'est produite lors de l'envoi de la transaction de résolution de litige.");
+    }
+  }
+
+  // Afficher les messages en fonction du type de transaction réussie
+  const getSuccessMessage = () => {
+    switch (txType) {
+      case "delete":
+        return "Bien supprimé avec succès!";
+      case "deposit":
+        return "Caution versée avec succès!";
+      case "refund":
+        return "Caution remboursée avec succès!";
+      case "dispute":
+        return "Litige ouvert avec succès!";
+      case "resolve":
+        return "Litige résolu avec succès!";
+      case "request":
+        return "Demande de caution envoyée avec succès!";
+      default:
+        return "Transaction effectuée avec succès!";
+    }
+  };
 
   if (!isConnected) {
     return (
@@ -101,8 +384,8 @@ export default function PropertyDetails() {
         <Header />
         <main className="flex-1 container py-12">
           <div className="flex flex-col items-center justify-center h-[60vh]">
-            <h1 className="text-2xl font-bold mb-4">Please connect your wallet</h1>
-            <p className="text-gray-500 mb-6">Connect your wallet to view property details</p>
+            <h1 className="text-2xl font-bold mb-4">Veuillez vous connecter</h1>
+            <p className="text-gray-500 mb-6">Connectez-vous pour voir les détails du bien</p>
           </div>
         </main>
       </div>
@@ -115,7 +398,7 @@ export default function PropertyDetails() {
         <Header />
         <main className="flex-1 container py-12">
           <div className="flex flex-col items-center justify-center h-[60vh]">
-            <h1 className="text-2xl font-bold mb-4">Loading property details...</h1>
+            <h1 className="text-2xl font-bold mb-4">Chargement des détails du bien...</h1>
           </div>
         </main>
       </div>
@@ -128,73 +411,235 @@ export default function PropertyDetails() {
         <Header />
         <main className="flex-1 container py-12">
           <div className="flex flex-col items-center justify-center h-[60vh]">
-            <h1 className="text-2xl font-bold mb-4">Property not found</h1>
-            <Button onClick={() => router.push("/properties")}>Back to Properties</Button>
+            <h1 className="text-2xl font-bold mb-4">Bien non trouvé</h1>
+            <Button onClick={() => router.push("/dashboard")}>Retour au tableau de bord</Button>
           </div>
         </main>
       </div>
     )
   }
 
+  const isFormDisabled = transactionStatus === "pending" || transactionStatus === "confirming";
+
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="flex-1 container py-12">
-        <Button variant="outline" onClick={() => router.push("/properties")} className="mb-6">
-          Back to Properties
+        <Button variant="outline" onClick={() => router.push("/dashboard")} className="mb-6">
+          Retour au tableau de bord
         </Button>
 
-        <div className="grid md:grid-cols-2 gap-8">
-          <div>
-            <div className="rounded-lg overflow-hidden mb-6">
-              <img
-                src={`/placeholder.svg?height=400&width=600&text=Property+${property.id}`}
-                alt={property.name}
-                className="w-full h-[300px] object-cover"
-              />
-            </div>
-          </div>
-
-          <Card>
+        {transactionStatus !== "idle" && (
+          <Card className="mb-6">
             <CardHeader>
-              <CardTitle className="text-2xl">{property.name}</CardTitle>
-              <CardDescription className="flex items-center text-base">
-                <MapPin className="h-4 w-4 mr-1" /> {property.location}
+              <CardTitle>État de la transaction</CardTitle>
+              <CardDescription>
+                {transactionStatus === "pending" && "Envoi de la transaction..."}
+                {transactionStatus === "confirming" && "Transaction en cours de confirmation..."}
+                {transactionStatus === "success" && "Transaction confirmée!"}
+                {transactionStatus === "error" && "Erreur lors de la transaction"}
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center">
-                <DollarSign className="h-5 w-5 mr-2" />
-                <span className="text-lg">Deposit Amount: {property.depositAmount} ETH</span>
-              </div>
-
-              <div className="flex items-center">
-                <User className="h-5 w-5 mr-2" />
-                <span>
-                  Landlord: {property.landlord.slice(0, 6)}...{property.landlord.slice(-4)}
-                </span>
-              </div>
-
-              {!isLandlord && (
-                <Button
-                  onClick={handleMakeDeposit}
-                  className="w-full mt-6"
-                  disabled={isDepositPending || isDepositConfirming}
-                >
-                  {isDepositPending || isDepositConfirming
-                    ? "Processing..."
-                    : `Make Deposit (${property.depositAmount} ETH)`}
-                </Button>
+            <CardContent>
+              {transactionStatus === "pending" && (
+                <div className="flex items-center justify-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                  <p className="ml-2">Veuillez confirmer la transaction dans votre wallet</p>
+                </div>
               )}
 
-              {isLandlord && (
-                <div className="bg-muted p-4 rounded-lg mt-4">
-                  <p className="text-sm">You are the landlord of this property.</p>
+              {transactionStatus === "confirming" && (
+                <div className="flex items-center justify-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
+                  <p className="ml-2">En attente de confirmation sur la blockchain</p>
+                </div>
+              )}
+
+              {transactionStatus === "success" && (
+                <Alert className="bg-green-50 border-green-200">
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  <AlertTitle>Succès!</AlertTitle>
+                  <AlertDescription>
+                    {getSuccessMessage()}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {transactionStatus === "error" && (
+                <Alert className="bg-red-50 border-red-200">
+                  <AlertCircle className="h-5 w-5 text-red-500" />
+                  <AlertTitle>Échec de la transaction</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              {txHash && (
+                <div className="mt-4 p-3 bg-gray-50 rounded-md">
+                  <p className="text-sm font-medium">Hash de transaction:</p>
+                  <p className="text-xs text-gray-500 break-all mt-1">{txHash}</p>
                 </div>
               )}
             </CardContent>
+            <CardFooter className="flex justify-end gap-2">
+              {transactionStatus === "success" && (
+                <>
+                  <Button onClick={() => router.push("/dashboard")} variant="default">
+                    Retour au tableau de bord
+                  </Button>
+                  <Button onClick={resetTransaction} variant="outline">
+                    Continuer
+                  </Button>
+                </>
+              )}
+              {transactionStatus === "error" && (
+                <Button onClick={resetTransaction} variant="outline">
+                  Réessayer
+                </Button>
+              )}
+            </CardFooter>
           </Card>
-        </div>
+        )}
+        
+        {(transactionStatus === "idle" || transactionStatus === "error") && (
+          <div className="grid md:grid-cols-2 gap-8">
+            <div>
+              <div className="rounded-lg overflow-hidden mb-6">
+                <img
+                  src={`/placeholder.svg?height=400&width=600&text=Bien+${property.id}`}
+                  alt={property.name}
+                  className="w-full h-[300px] object-cover"
+                />
+              </div>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-2xl">{property.name} - {property.status}</CardTitle>
+                <CardDescription className="flex items-center text-base">
+                  <MapPin className="h-4 w-4 mr-1" /> {property.location}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center">
+                  <DollarSign className="h-5 w-5 mr-2" />
+                  <span className="text-lg">Montant de la caution: {property.depositAmount} ETH</span>
+                </div>
+
+                <div className="flex items-center">
+                  <User className="h-5 w-5 mr-2" />
+                  <span>
+                    Propriétaire: {property.landlord.slice(0, 6)}...{property.landlord.slice(-4)}
+                  </span>
+                </div>
+                {isLandlord && (
+                  <div className="space-y-4">
+                    {property.status === "Non loué" && (
+                      <>
+                        <Button
+                          onClick={handleDeleteProperty}
+                          variant="destructive"
+                          className="w-full"
+                          disabled={isFormDisabled}
+                        >
+                          {isFormDisabled && txType === "delete" ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              En cours...
+                            </>
+                          ) : (
+                            "Supprimer"
+                          )}
+                        </Button>
+                        <Button
+                          onClick={handleRequestDeposit}
+                          className="w-full"
+                          disabled={isFormDisabled}
+                        >
+                          {isFormDisabled && txType === "request" ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              En cours...
+                            </>
+                          ) : (
+                            "Demande de caution"
+                          )}
+                        </Button>
+                      </>
+                    )}
+
+                    {property.status === "Loué" && (
+                      <>
+                        <Button
+                          onClick={handleRefundDeposit}
+                          className="w-full"
+                          disabled={isFormDisabled}
+                        >
+                          {isFormDisabled && txType === "refund" ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              En cours...
+                            </>
+                          ) : (
+                            "Restituer la caution"
+                          )}
+                        </Button>
+                        <Button
+                          onClick={handleInitiateDispute}
+                          variant="outline"
+                          className="w-full"
+                          disabled={isFormDisabled}
+                        >
+                          {isFormDisabled && txType === "dispute" ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              En cours...
+                            </>
+                          ) : (
+                            "Ouvrir un litige"
+                          )}
+                        </Button>
+                      </>
+                    )}
+
+                    {property.status === "En litige" && (
+                      <Button
+                        onClick={handleResolveDispute}
+                        className="w-full"
+                        disabled={isFormDisabled}
+                      >
+                        {isFormDisabled && txType === "resolve" ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            En cours...
+                          </>
+                        ) : (
+                          "Régler le litige"
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {!isLandlord && (
+                  <Button
+                    onClick={handleMakeDeposit}
+                    className="w-full mt-6"
+                    disabled={isFormDisabled}
+                  >
+                    {isFormDisabled && txType === "deposit" ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        En cours...
+                      </>
+                    ) : (
+                      `Verser la caution (${property.depositAmount} ETH)`
+                    )}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </main>
     </div>
   )

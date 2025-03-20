@@ -124,6 +124,37 @@ contract SmartDeposit {
         return propertyId;
     }
 
+    function deleteProperty(
+        uint256 _propertyId
+    ) external propertyExists(_propertyId) {
+        Property storage property = properties[_propertyId];
+
+        require(msg.sender == property.landlord, "Not the landlord");
+        require(
+            property.status == PropertyStatus.NOT_RENTED,
+            "Property is rented"
+        );
+        require(
+            property.status != PropertyStatus.DISPUTED,
+            "Property is disputed"
+        );
+
+        // Supprime le bien du tableau des biens du propriétaire
+        uint256[] storage landlordProps = landlordProperties[msg.sender];
+        for (uint i = 0; i < landlordProps.length; i++) {
+            if (landlordProps[i] == _propertyId) {
+                landlordProps[i] = landlordProps[landlordProps.length - 1];
+                landlordProps.pop();
+                break;
+            }
+        }
+
+        // Supprime le bien de la cartographie des biens
+        delete properties[_propertyId];
+
+        emit PropertyStatusChanged(_propertyId, PropertyStatus.NOT_RENTED);
+    }
+
     function makeDeposit(
         uint256 _propertyId
     ) external payable propertyExists(_propertyId) returns (uint256) {
@@ -157,7 +188,11 @@ contract SmartDeposit {
 
     function initiateDispute(
         uint256 _depositId
-    ) external onlyTenant(_depositId) depositExists(_depositId) {
+    )
+        external
+        onlyLandlord(deposits[_depositId].propertyId)
+        depositExists(_depositId)
+    {
         Deposit storage deposit = deposits[_depositId];
         require(deposit.status == DepositStatus.ACTIVE, "Deposit not active");
 
