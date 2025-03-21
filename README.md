@@ -1,4 +1,4 @@
-# Smart Deposit - Solution de Gestion de Dépôts de Garantie sur Ethereum
+# Smart Deposit - Solution de Gestion de Cautions Immobilières sur Ethereum
 
 ## Description
 Smart Deposit est une application décentralisée (dApp) permettant la gestion sécurisée cautions locatives sur la blockchain Ethereum. La solution comprend un smart contract déployé sur le réseau Sepolia et une interface utilisateur moderne développée avec Next.js.

@@ -7,7 +7,7 @@ import {
   RainbowKitProvider,
 } from '@rainbow-me/rainbowkit'
 import { WagmiProvider } from 'wagmi'
-import {hardhat} from 'wagmi/chains'
+import {sepolia} from 'wagmi/chains'
 import {
   QueryClientProvider,
   QueryClient,
@@ -16,7 +16,7 @@ import {
 const config = getDefaultConfig({
   appName: 'Smart Deposit',
   projectId: process.env.NEXT_PUBLIC_RAINBOW_PROJECT_ID,
-  chains: [hardhat],
+  chains: [sepolia],
 })
 
 const queryClient = new QueryClient()
