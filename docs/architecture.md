@@ -50,7 +50,7 @@ Frontend (Next.js) <--> Blockchain (Ethereum/Sepolia) <--> Smart Contract
 - Toutes les transactions sont signées par le wallet de l'utilisateur
 - Les fonds sont gérés par le contrat intelligent
 - Les règles métier sont appliquées au niveau du contrat
-- Aucune donnée sensible n'est stockée en dehors de la blockchain
+- Aucune donnée sensible n'est stockée en dehors de la blockchain  (TODO: chiffrement)
 
 ## Structure des données
 
@@ -62,9 +62,19 @@ Property {
   string name;
   string location;
   uint256 depositAmount;
-  PropertyStatus status; // Enum: VACANT, OCCUPIED, DISPUTED
+  PropertyStatus status; // Enum: NOT_RENTED, RENTED, DISPUTED
   address tenant; // Si occupé
 }
+
+Deposit {
+  uint256 id;
+  uint256 propertyId;
+  address tenant;
+  uint256 amount;
+  uint256 timestamp;
+  DepositStatus status;  // Enum: PENDING, ACTIVE, DISPUTED, RELEASED, REFUNDED
+}
+
 ```
 
 ### Organisation du frontend
