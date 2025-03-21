@@ -125,20 +125,27 @@ export default function Dashboard() {
         </div>
 
         <Card>
-          <CardHeader className="flex justify-between items-center">
-            <div>
-              <CardTitle>Vos propriétés</CardTitle>
+          <CardHeader>
+            <div className="flex justify-between w-full items-center">
+              <CardTitle>Vos biens</CardTitle>
+              <Link href="/properties/create">
+                <Button style={{ backgroundColor: "#7759F9", borderColor: "#7759F9" }}>Ajouter un bien</Button>
+              </Link>
             </div>
-            <Link href="/properties/create">
-              <Button>Ajouter un bien</Button>
-            </Link>
           </CardHeader>
           <CardContent>
             {landlordProperties.length > 0 && (
               <div className="space-y-4">
                 {landlordProperties.map((property) => (
                   <div key={property.id} className="border rounded-lg p-4">
-                    <h3 className="font-semibold text-lg">{property.name}</h3>
+                    <div className="flex justify-between items-center mb-2">
+                      <h3 className="font-semibold text-lg">{property.name}</h3>
+                      <Link href={`/properties/${property.id}`}>
+                        <Button variant="outline" size="sm">
+                          Voir les détails
+                        </Button>
+                      </Link>
+                    </div>
                     <p className="text-sm text-gray-500">{property.location}</p>
                     <p className="mt-2">Caution: {property.depositAmount} ETH</p>
                     <p className="mt-1">
@@ -155,13 +162,6 @@ export default function Dashboard() {
                         {property.status}
                       </span>
                     </p>
-                    <div className="mt-4">
-                      <Link href={`/properties/${property.id}`}>
-                        <Button variant="outline" size="sm">
-                          Voir les détails
-                        </Button>
-                      </Link>
-                    </div>
                   </div>
                 ))}
               </div>)}

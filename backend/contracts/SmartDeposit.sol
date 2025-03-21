@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.28;
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract SmartDeposit {
+contract SmartDeposit is Ownable {
     // Structs
     struct Property {
         uint256 id;
@@ -63,6 +64,8 @@ contract SmartDeposit {
         uint256 indexed propertyId,
         PropertyStatus status
     );
+
+    constructor() Ownable(msg.sender) {}
 
     // Modifiers
     modifier onlyLandlord(uint256 _propertyId) {

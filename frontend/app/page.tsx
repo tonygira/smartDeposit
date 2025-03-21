@@ -20,10 +20,10 @@ export default function Home() {
               </div>
               <div className="space-x-4">
                 <Link href="/deposits">
-                  <Button>Je suis locataire</Button>
+                  <Button style={{ backgroundColor: "#7759F9", borderColor: "#7759F9" }}>Je suis locataire</Button>
                 </Link>
                 <Link href="/dashboard">
-                  <Button variant="secondary">Je suis propriétaire</Button>
+                  <Button style={{ backgroundColor: "#7759F9", borderColor: "#7759F9" }}>Je suis propriétaire</Button>
                 </Link>
                 <Link href="/about">
                   <Button variant="outline">En savoir plus</Button>

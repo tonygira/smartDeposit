@@ -64,7 +64,14 @@ export function CustomConnectButton() {
                     {chain.name}
                   </Button>
 
-                  <Button onClick={openAccountModal} variant="secondary">
+                  <Button 
+                    onClick={openAccountModal} 
+                    style={{ 
+                      backgroundColor: "#7759F9",
+                      color: "white",
+                      borderColor: "#7759F9"
+                    }}
+                  >
                     {account.displayName}
                     {account.displayBalance ? ` (${account.displayBalance})` : ""}
                   </Button>

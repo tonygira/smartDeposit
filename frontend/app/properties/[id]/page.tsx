@@ -9,8 +9,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button"
 import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getPropertyStatusText, PropertyStatus } from "@/lib/contract"
 import { useToast } from "@/hooks/use-toast"
-import { MapPin, DollarSign, User, Loader2, CheckCircle, AlertCircle } from "lucide-react"
+import { MapPin, DollarSign, User, Loader2, CheckCircle, AlertCircle, ArrowLeft, Upload } from "lucide-react"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Separator } from "@/components/ui/separator"
 
 export default function PropertyDetails() {
   const params = useParams()
@@ -25,6 +28,10 @@ export default function PropertyDetails() {
   const [txType, setTxType] = useState<"delete" | "deposit" | "refund" | "dispute" | "resolve" | "request" | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<string | null>(null)
+  
+  // Demande de caution
+  const [showDepositRequestForm, setShowDepositRequestForm] = useState(false)
+  const [depositAmount, setDepositAmount] = useState("")
 
   const propertyId = Number(params.id)
 
@@ -61,6 +68,8 @@ export default function PropertyDetails() {
 
       setProperty(propertyObj)
       setIsLandlord(address?.toLowerCase() === landlord.toLowerCase())
+      // Initialiser le montant de la caution avec la valeur actuelle
+      setDepositAmount(formatEther(depositAmount))
     }
   }, [propertyData, address])
 
@@ -274,25 +283,33 @@ export default function PropertyDetails() {
   }
   
   const handleRequestDeposit = async () => {
-    if (!property) return
-    
-    try {
-      setTransactionStatus("pending");
-      setTxType("request");
-      setError(null);
-      
-      toast({
-        title: "Information",
-        description: "Cette fonctionnalité sera bientôt disponible.",
-      })
-      // Cette fonction sera implémentée plus tard
-      setTransactionStatus("error");
-      setError("Cette fonctionnalité n'est pas encore implémentée.");
-    } catch (error) {
-      console.error("Erreur lors de la demande de caution:", error)
-      setTransactionStatus("error");
-      setError("Une erreur s'est produite lors de l'envoi de la demande de caution.");
-    }
+    setShowDepositRequestForm(true);
+  }
+  
+  const handleCancelDepositRequest = () => {
+    setShowDepositRequestForm(false);
+  }
+  
+  const handleSubmitDepositRequest = () => {
+    // Cette fonction ouvrira un autre formulaire ultérieurement
+    toast({
+      title: "Information",
+      description: "Cette fonctionnalité sera bientôt disponible.",
+    });
+  }
+  
+  const handleUploadLease = () => {
+    toast({
+      title: "Information",
+      description: "La fonctionnalité de dépôt de bail sera bientôt disponible.",
+    });
+  }
+  
+  const handleUploadPhotos = () => {
+    toast({
+      title: "Information",
+      description: "La fonctionnalité de dépôt de photos sera bientôt disponible.",
+    });
   }
   
   const handleRefundDeposit = async () => {
@@ -500,7 +517,95 @@ export default function PropertyDetails() {
           </Card>
         )}
         
-        {(transactionStatus === "idle" || transactionStatus === "error") && (
+        {/* Formulaire de demande de caution */}
+        {showDepositRequestForm && (
+          <div className="grid grid-cols-1 gap-8 mb-8">
+            <Card>
+              <CardHeader>
+                <CardTitle>Demande de caution</CardTitle>
+                <CardDescription>Complétez les informations pour demander une caution</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Section "Votre bien" */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3">Votre bien</h3>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm text-gray-500">Nom du bien</Label>
+                      <p className="font-medium">{property.name}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm text-gray-500">Emplacement</Label>
+                      <p className="font-medium">{property.location}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm text-gray-500">Statut</Label>
+                      <p className="font-medium">{property.status}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm text-gray-500">Montant actuel de la caution</Label>
+                      <p className="font-medium">{property.depositAmount} ETH</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <Separator />
+                
+                {/* Section "Dépose de caution" */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">Dépose de caution</h3>
+                  <p className="text-gray-600 mb-4">Veuillez renseigner les informations suivantes :</p>
+                  
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-col md:flex-row gap-4 mb-4">
+                      <Button 
+                        variant="outline" 
+                        className="flex items-center"
+                        onClick={handleUploadLease}
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Déposer le bail
+                      </Button>
+                      
+                      <Button 
+                        variant="outline" 
+                        className="flex items-center"
+                        onClick={handleUploadPhotos}
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Déposer photos
+                      </Button>
+                    </div>
+                    
+                    <div className="mb-2">
+                      <Label htmlFor="depositAmount">Montant de la caution (€)</Label>
+                      <Input 
+                        id="depositAmount" 
+                        type="number" 
+                        value={depositAmount}
+                        onChange={(e) => setDepositAmount(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter className="flex justify-between">
+                <Button 
+                  variant="outline" 
+                  onClick={handleCancelDepositRequest}
+                  className="flex items-center"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Retour
+                </Button>
+                <Button onClick={handleSubmitDepositRequest}>Valider la caution</Button>
+              </CardFooter>
+            </Card>
+          </div>
+        )}
+        
+        {(transactionStatus === "idle" || transactionStatus === "error") && !showDepositRequestForm && (
           <div className="grid md:grid-cols-2 gap-8">
             <div>
               <div className="rounded-lg overflow-hidden mb-6">

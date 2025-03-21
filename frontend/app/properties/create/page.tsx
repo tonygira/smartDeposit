@@ -176,7 +176,10 @@ export default function CreateProperty() {
                     <Button onClick={() => router.push("/dashboard")} variant="default">
                       Retour au tableau de bord
                     </Button>
-                    <Button onClick={resetForm} variant="outline">
+                    <Button 
+                      onClick={resetForm} 
+                      style={{ backgroundColor: "#7759F9", borderColor: "#7759F9" }}
+                    >
                       Créer un autre bien
                     </Button>
                   </>
@@ -239,7 +242,12 @@ export default function CreateProperty() {
                     <Button type="button" variant="outline" className="w-full" onClick={() => router.push("/dashboard")} disabled={isFormDisabled}>
                       Annuler
                     </Button>
-                    <Button type="submit" className="w-full" disabled={isFormDisabled}>
+                    <Button 
+                      type="submit" 
+                      className="w-full" 
+                      disabled={isFormDisabled}
+                      style={!isFormDisabled ? { backgroundColor: "#7759F9", borderColor: "#7759F9" } : {}}
+                    >
                       {isFormDisabled ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
