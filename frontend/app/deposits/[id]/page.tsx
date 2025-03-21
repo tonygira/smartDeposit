@@ -99,158 +99,7 @@ export default function DepositDetails() {
     }
   }, [propertyData, address])
 
-  // Fetch property details
-  const fetchPropertyDetails = async (propertyId: number) => {
-    try {
-      // const { data } = await useReadContract({
-      //   address: CONTRACT_ADDRESS as `0x${string}`,
-      //   abi: SMART_DEPOSIT_ABI,
-      //   functionName: 'getPropertyDetails',
-      //   args: [BigInt(propertyId)],
-      // })
-      // if (data) {
-      //   const [id, landlord, name, location, depositAmount, isActive] = data as [
-      //     bigint,
-      //     string,
-      //     string,
-      //     string,
-      //     bigint,
-      //     boolean
-      //   ]
-      //   const propertyObj = {
-      //     id: Number(id),
-      //     landlord,
-      //     name,
-      //     location,
-      //     depositAmount: formatEther(depositAmount),
-      //     isActive,
-      //   }
-      //   setProperty(propertyObj)
-      //   setIsLandlord(address?.toLowerCase() === landlord.toLowerCase())
-      // }
-    } catch (error) {
-      console.error("Error fetching property details:", error)
-    }
-  }
 
-  // Dispute deposit
-  const { data: disputeHash, isPending: isDisputePending, writeContract: writeDisputeContract } = useWriteContract()
-
-  const { isLoading: isDisputeConfirming, isSuccess: isDisputeConfirmed } = useWaitForTransactionReceipt({
-    hash: disputeHash,
-  })
-
-  const handleInitiateDispute = async () => {
-    if (!deposit) return
-
-    try {
-      writeDisputeContract({
-        address: CONTRACT_ADDRESS as `0x${string}`,
-        abi: SMART_DEPOSIT_ABI,
-        functionName: "initiateDispute",
-        args: [BigInt(depositId)],
-      })
-    } catch (error) {
-      console.error("Error initiating dispute:", error)
-      toast({
-        title: "Error",
-        description: "Failed to initiate dispute. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Resolve dispute
-  const { data: resolveHash, isPending: isResolvePending, writeContract: writeResolveContract } = useWriteContract()
-
-  const { isLoading: isResolveConfirming, isSuccess: isResolveConfirmed } = useWaitForTransactionReceipt({
-    hash: resolveHash,
-  })
-
-  const handleResolveDispute = async (favorTenant: boolean) => {
-    if (!deposit) return
-
-    try {
-      writeResolveContract({
-        address: CONTRACT_ADDRESS as `0x${string}`,
-        abi: SMART_DEPOSIT_ABI,
-        functionName: "resolveDispute",
-        args: [BigInt(depositId), favorTenant],
-      })
-    } catch (error) {
-      console.error("Error resolving dispute:", error)
-      toast({
-        title: "Error",
-        description: "Failed to resolve dispute. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Release deposit
-  const { data: releaseHash, isPending: isReleasePending, writeContract: writeReleaseContract } = useWriteContract()
-
-  const { isLoading: isReleaseConfirming, isSuccess: isReleaseConfirmed } = useWaitForTransactionReceipt({
-    hash: releaseHash,
-  })
-
-  const handleReleaseDeposit = async () => {
-    if (!deposit) return
-
-    try {
-      writeReleaseContract({
-        address: CONTRACT_ADDRESS as `0x${string}`,
-        abi: SMART_DEPOSIT_ABI,
-        functionName: "releaseDeposit",
-        args: [BigInt(depositId)],
-      })
-    } catch (error) {
-      console.error("Error releasing deposit:", error)
-      toast({
-        title: "Error",
-        description: "Failed to release deposit. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Refund deposit
-  const { data: refundHash, isPending: isRefundPending, writeContract: writeRefundContract } = useWriteContract()
-
-  const { isLoading: isRefundConfirming, isSuccess: isRefundConfirmed } = useWaitForTransactionReceipt({
-    hash: refundHash,
-  })
-
-  const handleRefundDeposit = async () => {
-    if (!deposit) return
-
-    try {
-      writeRefundContract({
-        address: CONTRACT_ADDRESS as `0x${string}`,
-        abi: SMART_DEPOSIT_ABI,
-        functionName: "refundDeposit",
-        args: [BigInt(depositId)],
-      })
-    } catch (error) {
-      console.error("Error refunding deposit:", error)
-      toast({
-        title: "Error",
-        description: "Failed to refund deposit. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Handle transaction confirmations
-  useEffect(() => {
-    if (isDisputeConfirmed || isResolveConfirmed || isReleaseConfirmed || isRefundConfirmed) {
-      toast({
-        title: "Success",
-        description: "Transaction completed successfully!",
-      })
-      router.refresh()
-    }
-  }, [isDisputeConfirmed, isResolveConfirmed, isReleaseConfirmed, isRefundConfirmed, router, toast])
 
   const getStatusColor = (statusCode: number) => {
     switch (statusCode) {
@@ -275,8 +124,8 @@ export default function DepositDetails() {
         <Header />
         <main className="flex-1 container py-12">
           <div className="flex flex-col items-center justify-center h-[60vh]">
-            <h1 className="text-2xl font-bold mb-4">Please connect your wallet</h1>
-            <p className="text-gray-500 mb-6">Connect your wallet to view deposit details</p>
+            <h1 className="text-2xl font-bold mb-4">Veuillez vous connecter</h1>
+            <p className="text-gray-500 mb-6">Connectez-vous pour voir les détails de la caution</p>
           </div>
         </main>
       </div>
@@ -289,7 +138,7 @@ export default function DepositDetails() {
         <Header />
         <main className="flex-1 container py-12">
           <div className="flex flex-col items-center justify-center h-[60vh]">
-            <h1 className="text-2xl font-bold mb-4">Loading deposit details...</h1>
+            <h1 className="text-2xl font-bold mb-4">Chargement des détails de la caution...</h1>
           </div>
         </main>
       </div>
@@ -302,8 +151,8 @@ export default function DepositDetails() {
         <Header />
         <main className="flex-1 container py-12">
           <div className="flex flex-col items-center justify-center h-[60vh]">
-            <h1 className="text-2xl font-bold mb-4">Deposit not found</h1>
-            <Button onClick={() => router.push("/deposits")}>Back to Deposits</Button>
+            <h1 className="text-2xl font-bold mb-4">Caution introuvable</h1>
+            <Button onClick={() => router.push("/deposits")}>Retour aux cautions</Button>
           </div>
         </main>
       </div>
@@ -315,27 +164,27 @@ export default function DepositDetails() {
       <Header />
       <main className="flex-1 container py-12">
         <Button variant="outline" onClick={() => router.push("/deposits")} className="mb-6">
-          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Deposits
+          <ArrowLeft className="h-4 w-4 mr-2" /> Retour aux cautions
         </Button>
 
         <div className="grid md:grid-cols-2 gap-8">
           <Card>
             <CardHeader>
               <div className="flex justify-between items-start">
-                <CardTitle className="text-2xl">Deposit #{deposit.id}</CardTitle>
+                <CardTitle className="text-2xl">Caution #{deposit.id}</CardTitle>
                 <Badge variant="outline" className={getStatusColor(deposit.statusCode)}>
                   {deposit.status}
                 </Badge>
               </div>
               <CardDescription className="text-base">
-                Property ID: {deposit.propertyId}
+                Identifiant du bien: {deposit.propertyId}
                 {property && ` - ${property.name}`}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-gray-500">Amount</p>
+                  <p className="text-sm text-gray-500">Montant</p>
                   <p className="font-medium">{deposit.amount} ETH</p>
                 </div>
                 <div>
@@ -345,7 +194,7 @@ export default function DepositDetails() {
               </div>
 
               <div>
-                <p className="text-sm text-gray-500">Tenant</p>
+                <p className="text-sm text-gray-500">Locataire</p>
                 <p className="font-medium">
                   {deposit.tenant.slice(0, 6)}...{deposit.tenant.slice(-4)}
                 </p>
@@ -353,7 +202,7 @@ export default function DepositDetails() {
 
               {property && (
                 <div>
-                  <p className="text-sm text-gray-500">Landlord</p>
+                  <p className="text-sm text-gray-500">Propriétaire</p>
                   <p className="font-medium">
                     {property.landlord.slice(0, 6)}...{property.landlord.slice(-4)}
                   </p>
@@ -365,83 +214,38 @@ export default function DepositDetails() {
           <Card>
             <CardHeader>
               <CardTitle>Actions</CardTitle>
-              <CardDescription>Manage your deposit</CardDescription>
+              <CardDescription>Gérer votre caution</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {deposit.statusCode === DepositStatus.ACTIVE && isTenant && (
                 <div>
-                  <h3 className="font-medium mb-2">Tenant Actions</h3>
+                  <h3 className="font-medium mb-2">Actions du locataire</h3>
                   <Button
-                    onClick={handleInitiateDispute}
-                    variant="destructive"
-                    className="w-full"
-                    disabled={isDisputePending || isDisputeConfirming}
-                  >
-                    <AlertTriangle className="h-4 w-4 mr-2" />
-                    {isDisputePending || isDisputeConfirming ? "Processing..." : "Initiate Dispute"}
-                  </Button>
-                </div>
-              )}
-
-              {deposit.statusCode === DepositStatus.ACTIVE && isLandlord && (
-                <div className="space-y-4">
-                  <h3 className="font-medium mb-2">Landlord Actions</h3>
-                  <Button
-                    onClick={handleReleaseDeposit}
+                    onClick={() => toast({
+                      title: "Fonctionnalité non disponible",
+                      description: "La demande de restitution n'est pas encore implémentée.",
+                      variant: "destructive"
+                    })}
                     variant="default"
-                    className="w-full"
-                    disabled={isReleasePending || isReleaseConfirming}
+                    className="w-full bg-green-600 hover:bg-green-700"
                   >
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    {isReleasePending || isReleaseConfirming ? "Processing..." : "Release Deposit to Landlord"}
+                    Demander la restitution
                   </Button>
-
-                  <Button
-                    onClick={handleRefundDeposit}
-                    variant="outline"
-                    className="w-full"
-                    disabled={isRefundPending || isRefundConfirming}
-                  >
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    {isRefundPending || isRefundConfirming ? "Processing..." : "Refund Deposit to Tenant"}
-                  </Button>
-                </div>
-              )}
-
-              {deposit.statusCode === DepositStatus.DISPUTED && isLandlord && (
-                <div className="space-y-4">
-                  <h3 className="font-medium mb-2">Resolve Dispute</h3>
-                  <Button
-                    onClick={() => handleResolveDispute(false)}
-                    variant="default"
-                    className="w-full mb-2"
-                    disabled={isResolvePending || isResolveConfirming}
-                  >
-                    {isResolvePending || isResolveConfirming ? "Processing..." : "Resolve in Favor of Landlord"}
-                  </Button>
-
-                  <Button
-                    onClick={() => handleResolveDispute(true)}
-                    variant="outline"
-                    className="w-full"
-                    disabled={isResolvePending || isResolveConfirming}
-                  >
-                    {isResolvePending || isResolveConfirming ? "Processing..." : "Resolve in Favor of Tenant"}
-                  </Button>
+                  <p className="text-xs text-gray-500 mt-2 text-center">Fonctionnalité en cours de développement</p>
                 </div>
               )}
 
               {(deposit.statusCode === DepositStatus.RELEASED || deposit.statusCode === DepositStatus.REFUNDED) && (
                 <div className="bg-muted p-4 rounded-lg">
                   <p className="text-center">
-                    This deposit has been {deposit.status.toLowerCase()}. No further actions are required.
+                    Cette caution a été {deposit.status.toLowerCase()}. Aucune action supplémentaire n'est requise.
                   </p>
                 </div>
               )}
 
-              {!isTenant && !isLandlord && (
+              {!isTenant && (
                 <div className="bg-muted p-4 rounded-lg">
-                  <p className="text-center">You are not authorized to perform actions on this deposit.</p>
+                  <p className="text-center">Vous n'êtes pas autorisé à effectuer des actions sur cette caution.</p>
                 </div>
               )}
             </CardContent>

@@ -291,11 +291,8 @@ export default function PropertyDetails() {
   }
   
   const handleSubmitDepositRequest = () => {
-    // Cette fonction ouvrira un autre formulaire ultérieurement
-    toast({
-      title: "Information",
-      description: "Cette fonctionnalité sera bientôt disponible.",
-    });
+    // Rediriger vers la page de QR code
+    router.push(`/properties/${propertyId}/qr-code`);
   }
   
   const handleUploadLease = () => {
@@ -429,7 +426,9 @@ export default function PropertyDetails() {
         <main className="flex-1 container py-12">
           <div className="flex flex-col items-center justify-center h-[60vh]">
             <h1 className="text-2xl font-bold mb-4">Bien non trouvé</h1>
-            <Button onClick={() => router.push("/dashboard")}>Retour au tableau de bord</Button>
+            <Button onClick={() => router.push(isLandlord ? "/dashboard" : "/deposits")}>
+              {isLandlord ? "Retour au tableau de bord" : "Retour aux cautions"}
+            </Button>
           </div>
         </main>
       </div>
@@ -442,8 +441,12 @@ export default function PropertyDetails() {
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="flex-1 container py-12">
-        <Button variant="outline" onClick={() => router.push("/dashboard")} className="mb-6">
-          Retour au tableau de bord
+        <Button 
+          variant="outline" 
+          onClick={() => router.push(isLandlord ? "/dashboard" : "/deposits")} 
+          className="mb-6"
+        >
+          {isLandlord ? "Retour au tableau de bord" : "Retour aux cautions"}
         </Button>
 
         {transactionStatus !== "idle" && (
@@ -500,8 +503,18 @@ export default function PropertyDetails() {
             <CardFooter className="flex justify-end gap-2">
               {transactionStatus === "success" && (
                 <>
-                  <Button onClick={() => router.push("/dashboard")} variant="default">
-                    Retour au tableau de bord
+                  <Button onClick={() => router.push(
+                    txType === "deposit" 
+                      ? "/deposits" 
+                      : isLandlord 
+                        ? "/dashboard" 
+                        : "/deposits"
+                  )} variant="default">
+                    {txType === "deposit" 
+                      ? "Voir mes cautions" 
+                      : isLandlord 
+                        ? "Retour au tableau de bord" 
+                        : "Voir mes cautions"}
                   </Button>
                   <Button onClick={resetTransaction} variant="outline">
                     Continuer
@@ -606,18 +619,18 @@ export default function PropertyDetails() {
         )}
         
         {(transactionStatus === "idle" || transactionStatus === "error") && !showDepositRequestForm && (
-          <div className="grid md:grid-cols-2 gap-8">
-            <div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+            <div className="md:col-span-1">
               <div className="rounded-lg overflow-hidden mb-6">
                 <img
-                  src={`/placeholder.svg?height=400&width=600&text=Bien+${property.id}`}
+                  src={"/maison.png"}
                   alt={property.name}
-                  className="w-full h-[300px] object-cover"
+                  className="w-full h-[200px] object-cover"
                 />
               </div>
             </div>
 
-            <Card>
+            <Card className="md:col-span-3">
               <CardHeader>
                 <CardTitle className="text-2xl">{property.name} - {property.status}</CardTitle>
                 <CardDescription className="flex items-center text-base">
@@ -637,13 +650,13 @@ export default function PropertyDetails() {
                   </span>
                 </div>
                 {isLandlord && (
-                  <div className="space-y-4">
+                  <div className="mt-4">
                     {property.status === "Non loué" && (
-                      <>
+                      <div className="flex space-x-3">
                         <Button
                           onClick={handleDeleteProperty}
                           variant="destructive"
-                          className="w-full"
+                          size="sm"
                           disabled={isFormDisabled}
                         >
                           {isFormDisabled && txType === "delete" ? (
@@ -657,8 +670,9 @@ export default function PropertyDetails() {
                         </Button>
                         <Button
                           onClick={handleRequestDeposit}
-                          className="w-full"
+                          size="sm"
                           disabled={isFormDisabled}
+                          style={{ backgroundColor: "#7759F9" }}
                         >
                           {isFormDisabled && txType === "request" ? (
                             <>
@@ -669,15 +683,16 @@ export default function PropertyDetails() {
                             "Demande de caution"
                           )}
                         </Button>
-                      </>
+                      </div>
                     )}
 
                     {property.status === "Loué" && (
-                      <>
+                      <div className="flex space-x-3">
                         <Button
                           onClick={handleRefundDeposit}
-                          className="w-full"
+                          size="sm"
                           disabled={isFormDisabled}
+                          style={{ backgroundColor: "#7759F9" }}
                         >
                           {isFormDisabled && txType === "refund" ? (
                             <>
@@ -691,7 +706,7 @@ export default function PropertyDetails() {
                         <Button
                           onClick={handleInitiateDispute}
                           variant="outline"
-                          className="w-full"
+                          size="sm"
                           disabled={isFormDisabled}
                         >
                           {isFormDisabled && txType === "dispute" ? (
@@ -703,13 +718,13 @@ export default function PropertyDetails() {
                             "Ouvrir un litige"
                           )}
                         </Button>
-                      </>
+                      </div>
                     )}
 
                     {property.status === "En litige" && (
                       <Button
                         onClick={handleResolveDispute}
-                        className="w-full"
+                        size="sm"
                         disabled={isFormDisabled}
                       >
                         {isFormDisabled && txType === "resolve" ? (
@@ -728,7 +743,8 @@ export default function PropertyDetails() {
                 {!isLandlord && (
                   <Button
                     onClick={handleMakeDeposit}
-                    className="w-full mt-6"
+                    className="mt-6"
+                    size="sm"
                     disabled={isFormDisabled}
                   >
                     {isFormDisabled && txType === "deposit" ? (

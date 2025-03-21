@@ -9,11 +9,14 @@ import { Button } from "@/components/ui/button"
 import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getDepositStatusText, DepositStatus } from "@/lib/contract"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
+import { useRouter } from "next/navigation"
+import { QrCode } from "lucide-react"
 
 export default function Deposits() {
   const { address, isConnected } = useAccount()
   const [deposits, setDeposits] = useState<any[]>([])
   const [properties, setProperties] = useState<Record<number, any>>({})
+  const router = useRouter()
 
   // Get deposit IDs
   const { data: depositIds } = useReadContract({
@@ -100,6 +103,10 @@ export default function Deposits() {
     }
   }
 
+  const handleCodeButtonClick = () => {
+    router.push('/deposits/code');
+  }
+
   if (!isConnected) {
     return (
       <div className="flex min-h-screen flex-col">
@@ -118,7 +125,18 @@ export default function Deposits() {
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="flex-1 container py-12">
-        <h1 className="text-3xl font-bold mb-8">Vos cautions</h1> 
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
+          <h1 className="text-3xl font-bold">Vos cautions</h1>
+          <Button 
+            onClick={handleCodeButtonClick} 
+            variant="outline" 
+            className="flex items-center mt-4 md:mt-0"
+            style={{ backgroundColor: "#7759F9", color: "white" }}
+          >
+            <QrCode className="mr-2 h-5 w-5" />
+            J'ai un code caution
+          </Button>
+        </div>
 
         {deposits.length > 0 ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -131,7 +149,7 @@ export default function Deposits() {
                       {deposit.status}
                     </Badge>
                   </div>
-                  <CardDescription>Property ID: {deposit.propertyId}</CardDescription>
+                  <CardDescription>Identifiant du bien : {deposit.propertyId}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
@@ -153,7 +171,7 @@ export default function Deposits() {
             ))}
           </div>
         ) : (
-          <div className="text-center py-12">
+          <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-100">
             <h2 className="text-xl font-semibold mb-2">Aucune caution trouvée</h2>
             <p className="text-gray-500 mb-4">Vous n'avez pas encore déposé de caution</p>
           </div>
