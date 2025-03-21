@@ -15,7 +15,7 @@ export function Header() {
         <div className="flex items-center gap-6 md:gap-10">
           <Link href="/" className="flex items-center space-x-2">
             <Image 
-              src="/smart_deposit.png" 
+              src="/smartdeposit.png" 
               alt="Smart Deposit" 
               width={48} 
               height={48} 
