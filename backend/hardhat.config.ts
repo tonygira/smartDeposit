@@ -19,11 +19,11 @@ const config: HardhatUserConfig = {
       loggingEnabled: true // Active les logs
     }
   },
-  etherscan: {
-    apiKey: {
-      sepolia: process.env.ETHERSCAN_API_KEY
-    }
-  }
+  // etherscan: {
+  //   apiKey: {
+  //     sepolia: process.env.ETHERSCAN_API_KEY
+  //   }
+  // }
 };
 
 export default config;

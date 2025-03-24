@@ -513,6 +513,8 @@ export const getPropertyStatusText = (status: number): string => {
       return "Loué"
     case PropertyStatus.DISPUTED:
       return "En litige"
+    default:
+      return "Statut inconnu"
   }
 }
 
@@ -536,5 +538,7 @@ export const getDepositStatusText = (status: number): string => {
       return "Conservée"
     case DepositStatus.REFUNDED:
       return "Remboursée"
+    default:
+      return "Statut inconnu"
   }
 }
