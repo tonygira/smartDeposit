@@ -22,13 +22,13 @@ export default function PropertyDetails() {
   const { toast } = useToast()
   const [property, setProperty] = useState<any>(null)
   const [isLandlord, setIsLandlord] = useState(false)
-  
+
   // Transaction status
   const [transactionStatus, setTransactionStatus] = useState<"idle" | "pending" | "confirming" | "success" | "error">("idle")
   const [txType, setTxType] = useState<"delete" | "deposit" | "refund" | "dispute" | "resolve" | "request" | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<string | null>(null)
-  
+
   // Demande de caution
   const [showDepositRequestForm, setShowDepositRequestForm] = useState(false)
   const [depositAmount, setDepositAmount] = useState("")
@@ -40,8 +40,7 @@ export default function PropertyDetails() {
     address: CONTRACT_ADDRESS as `0x${string}`,
     abi: SMART_DEPOSIT_ABI,
     functionName: "getPropertyDetails",
-    args: [BigInt(propertyId)],
-    enabled: isConnected && !!propertyId,
+    args: [BigInt(propertyId)]
   })
 
   // Process property data
@@ -79,38 +78,38 @@ export default function PropertyDetails() {
   const { isLoading: isDepositConfirming, isSuccess: isDepositConfirmed, error: depositError } = useWaitForTransactionReceipt({
     hash: depositHash,
   })
-  
+
   // Handle delete property
   const { data: deleteHash, isPending: isDeletePending, writeContract: writeDeleteContract } = useWriteContract()
 
   const { isLoading: isDeleteConfirming, isSuccess: isDeleteConfirmed, error: deleteError } = useWaitForTransactionReceipt({
     hash: deleteHash,
   })
-  
+
   // Request deposit (for landlord)
   const { data: requestHash, isPending: isRequestPending, writeContract: writeRequestContract } = useWriteContract()
-  
+
   const { isLoading: isRequestConfirming, isSuccess: isRequestConfirmed, error: requestError } = useWaitForTransactionReceipt({
     hash: requestHash,
   })
-  
+
   // Refund deposit (for landlord)
   const { data: refundHash, isPending: isRefundPending, writeContract: writeRefundContract } = useWriteContract()
-  
+
   const { isLoading: isRefundConfirming, isSuccess: isRefundConfirmed, error: refundError } = useWaitForTransactionReceipt({
     hash: refundHash,
   })
-  
+
   // Initiate dispute (for landlord)
   const { data: disputeHash, isPending: isDisputePending, writeContract: writeDisputeContract } = useWriteContract()
-  
+
   const { isLoading: isDisputeConfirming, isSuccess: isDisputeConfirmed, error: disputeError } = useWaitForTransactionReceipt({
     hash: disputeHash,
   })
-  
+
   // Resolve dispute (for landlord)
   const { data: resolveHash, isPending: isResolvePending, writeContract: writeResolveContract } = useWriteContract()
-  
+
   const { isLoading: isResolveConfirming, isSuccess: isResolveConfirmed, error: resolveError } = useWaitForTransactionReceipt({
     hash: resolveHash,
   })
@@ -125,11 +124,11 @@ export default function PropertyDetails() {
       } else if (isDeleteConfirmed) {
         setTransactionStatus("success");
       }
-      
+
       if (deleteHash) {
         setTxHash(deleteHash);
       }
-      
+
       if (deleteError) {
         setTransactionStatus("error");
         setError("La transaction de suppression a échoué. Veuillez réessayer.");
@@ -142,11 +141,11 @@ export default function PropertyDetails() {
       } else if (isDepositConfirmed) {
         setTransactionStatus("success");
       }
-      
+
       if (depositHash) {
         setTxHash(depositHash);
       }
-      
+
       if (depositError) {
         setTransactionStatus("error");
         setError("La transaction de dépôt a échoué. Veuillez réessayer.");
@@ -159,11 +158,11 @@ export default function PropertyDetails() {
       } else if (isRefundConfirmed) {
         setTransactionStatus("success");
       }
-      
+
       if (refundHash) {
         setTxHash(refundHash);
       }
-      
+
       if (refundError) {
         setTransactionStatus("error");
         setError("La transaction de remboursement a échoué. Veuillez réessayer.");
@@ -176,11 +175,11 @@ export default function PropertyDetails() {
       } else if (isDisputeConfirmed) {
         setTransactionStatus("success");
       }
-      
+
       if (disputeHash) {
         setTxHash(disputeHash);
       }
-      
+
       if (disputeError) {
         setTransactionStatus("error");
         setError("La transaction d'ouverture de litige a échoué. Veuillez réessayer.");
@@ -193,11 +192,11 @@ export default function PropertyDetails() {
       } else if (isResolveConfirmed) {
         setTransactionStatus("success");
       }
-      
+
       if (resolveHash) {
         setTxHash(resolveHash);
       }
-      
+
       if (resolveError) {
         setTransactionStatus("error");
         setError("La transaction de résolution de litige a échoué. Veuillez réessayer.");
@@ -210,11 +209,11 @@ export default function PropertyDetails() {
       } else if (isRequestConfirmed) {
         setTransactionStatus("success");
       }
-      
+
       if (requestHash) {
         setTxHash(requestHash);
       }
-      
+
       if (requestError) {
         setTransactionStatus("error");
         setError("La transaction de demande de caution a échoué. Veuillez réessayer.");
@@ -229,7 +228,7 @@ export default function PropertyDetails() {
     isResolvePending, isResolveConfirming, isResolveConfirmed, resolveHash, resolveError,
     isRequestPending, isRequestConfirming, isRequestConfirmed, requestHash, requestError,
   ]);
-  
+
   // Reset transaction tracking
   const resetTransaction = () => {
     setTransactionStatus("idle");
@@ -246,7 +245,7 @@ export default function PropertyDetails() {
       setTransactionStatus("pending");
       setTxType("deposit");
       setError(null);
-      
+
       writeDepositContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: SMART_DEPOSIT_ABI,
@@ -268,11 +267,11 @@ export default function PropertyDetails() {
       setTransactionStatus("pending");
       setTxType("delete");
       setError(null);
-      
+
       writeDeleteContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: SMART_DEPOSIT_ABI,
-        functionName: "deleteProperty", 
+        functionName: "deleteProperty",
         args: [BigInt(propertyId)],
       })
     } catch (error) {
@@ -281,63 +280,71 @@ export default function PropertyDetails() {
       setError("Une erreur s'est produite lors de l'envoi de la transaction de suppression.");
     }
   }
-  
+
   const handleRequestDeposit = async () => {
     setShowDepositRequestForm(true);
   }
-  
+
   const handleCancelDepositRequest = () => {
     setShowDepositRequestForm(false);
   }
-  
+
   const handleSubmitDepositRequest = () => {
     // Rediriger vers la page de QR code
     router.push(`/properties/${propertyId}/qr-code`);
   }
-  
+
   const handleUploadLease = () => {
     toast({
       title: "Information",
       description: "La fonctionnalité de dépôt de bail sera bientôt disponible.",
     });
   }
-  
+
   const handleUploadPhotos = () => {
     toast({
       title: "Information",
       description: "La fonctionnalité de dépôt de photos sera bientôt disponible.",
     });
   }
-  
+
+  // Récupération de l'id de deposit
+  const { data: depositData } = useReadContract({
+    address: CONTRACT_ADDRESS as `0x${string}`,
+    abi: SMART_DEPOSIT_ABI,
+    functionName: "getDepositDetails",
+    args: [BigInt(propertyId)],
+  });
+
   const handleRefundDeposit = async () => {
-    if (!property) return
-    
+    if (!property || !depositData) return;
+
     try {
       setTransactionStatus("pending");
       setTxType("refund");
       setError(null);
-      
+
       writeRefundContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: SMART_DEPOSIT_ABI,
         functionName: "refundDeposit",
         args: [BigInt(propertyId)],
-      })
+      });
     } catch (error) {
-      console.error("Erreur lors du remboursement de la caution:", error)
+      console.error("Erreur lors du remboursement de la caution:", error);
       setTransactionStatus("error");
       setError("Une erreur s'est produite lors de l'envoi de la transaction de remboursement.");
     }
-  }
-  
+  };
+
   const handleInitiateDispute = async () => {
     if (!property) return
-    
+
     try {
       setTransactionStatus("pending");
       setTxType("dispute");
       setError(null);
-      
+
       writeDisputeContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: SMART_DEPOSIT_ABI,
@@ -350,15 +357,15 @@ export default function PropertyDetails() {
       setError("Une erreur s'est produite lors de l'envoi de la transaction d'ouverture de litige.");
     }
   }
-  
+
   const handleResolveDispute = async () => {
     if (!property) return
-    
+
     try {
       setTransactionStatus("pending");
       setTxType("resolve");
       setError(null);
-      
+
       writeResolveContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: SMART_DEPOSIT_ABI,
@@ -441,9 +448,9 @@ export default function PropertyDetails() {
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="flex-1 container py-12">
-        <Button 
-          variant="outline" 
-          onClick={() => router.push(isLandlord ? "/dashboard" : "/deposits")} 
+        <Button
+          variant="outline"
+          onClick={() => router.push(isLandlord ? "/dashboard" : "/deposits")}
           className="mb-6"
         >
           {isLandlord ? "Retour au tableau de bord" : "Retour aux cautions"}
@@ -504,16 +511,16 @@ export default function PropertyDetails() {
               {transactionStatus === "success" && (
                 <>
                   <Button onClick={() => router.push(
-                    txType === "deposit" 
-                      ? "/deposits" 
-                      : isLandlord 
-                        ? "/dashboard" 
+                    txType === "deposit"
+                      ? "/deposits"
+                      : isLandlord
+                        ? "/dashboard"
                         : "/deposits"
                   )} variant="default">
-                    {txType === "deposit" 
-                      ? "Voir mes cautions" 
-                      : isLandlord 
-                        ? "Retour au tableau de bord" 
+                    {txType === "deposit"
+                      ? "Voir mes cautions"
+                      : isLandlord
+                        ? "Retour au tableau de bord"
                         : "Voir mes cautions"}
                   </Button>
                   <Button onClick={resetTransaction} variant="outline">
@@ -529,7 +536,7 @@ export default function PropertyDetails() {
             </CardFooter>
           </Card>
         )}
-        
+
         {/* Formulaire de demande de caution */}
         {showDepositRequestForm && (
           <div className="grid grid-cols-1 gap-8 mb-8">
@@ -561,27 +568,27 @@ export default function PropertyDetails() {
                     </div>
                   </div>
                 </div>
-                
+
                 <Separator />
-                
+
                 {/* Section "Dépose de caution" */}
                 <div>
                   <h3 className="text-lg font-semibold mb-2">Dépose de caution</h3>
                   <p className="text-gray-600 mb-4">Veuillez renseigner les informations suivantes :</p>
-                  
+
                   <div className="flex flex-col gap-4">
                     <div className="flex flex-col md:flex-row gap-4 mb-4">
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         className="flex items-center"
                         onClick={handleUploadLease}
                       >
                         <Upload className="mr-2 h-4 w-4" />
                         Déposer le bail
                       </Button>
-                      
-                      <Button 
-                        variant="outline" 
+
+                      <Button
+                        variant="outline"
                         className="flex items-center"
                         onClick={handleUploadPhotos}
                       >
@@ -589,12 +596,12 @@ export default function PropertyDetails() {
                         Déposer photos
                       </Button>
                     </div>
-                    
+
                     <div className="mb-2">
                       <Label htmlFor="depositAmount">Montant de la caution (€)</Label>
-                      <Input 
-                        id="depositAmount" 
-                        type="number" 
+                      <Input
+                        id="depositAmount"
+                        type="number"
                         value={depositAmount}
                         onChange={(e) => setDepositAmount(e.target.value)}
                         className="mt-1"
@@ -604,8 +611,8 @@ export default function PropertyDetails() {
                 </div>
               </CardContent>
               <CardFooter className="flex justify-between">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={handleCancelDepositRequest}
                   className="flex items-center"
                 >
@@ -617,7 +624,7 @@ export default function PropertyDetails() {
             </Card>
           </div>
         )}
-        
+
         {(transactionStatus === "idle" || transactionStatus === "error") && !showDepositRequestForm && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="md:col-span-1">

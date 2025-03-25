@@ -31,7 +31,7 @@ contract SmartDeposit is Ownable {
         PENDING,
         ACTIVE,
         DISPUTED,
-        RELEASED,
+        RETAINED,
         REFUNDED
     }
 
@@ -142,7 +142,8 @@ contract SmartDeposit is Ownable {
             "Property is disputed"
         );
 
-        // Supprime le bien du tableau des biens du propriétaire
+        // Supprime le bien du tableau des biens du propriétaire en faisant un
+        // parcours de la liste des biens du propriétaire (cette liste n'aura jamais un grand nombre d'éléments)
         uint256[] storage landlordProps = landlordProperties[msg.sender];
         for (uint i = 0; i < landlordProps.length; i++) {
             if (landlordProps[i] == _propertyId) {
@@ -223,7 +224,7 @@ contract SmartDeposit is Ownable {
             deposit.status = DepositStatus.REFUNDED;
             payable(deposit.tenant).transfer(deposit.amount);
         } else {
-            deposit.status = DepositStatus.RELEASED;
+            deposit.status = DepositStatus.RETAINED;
             payable(properties[deposit.propertyId].landlord).transfer(
                 deposit.amount
             );
@@ -233,7 +234,7 @@ contract SmartDeposit is Ownable {
         emit DepositStatusChanged(_depositId, deposit.status);
     }
 
-    function releaseDeposit(
+    function retainDeposit(
         uint256 _depositId
     )
         external
@@ -243,11 +244,14 @@ contract SmartDeposit is Ownable {
         Deposit storage deposit = deposits[_depositId];
         require(deposit.status == DepositStatus.ACTIVE, "Deposit not active");
 
-        deposit.status = DepositStatus.RELEASED;
+        deposit.status = DepositStatus.RETAINED;
+        Property storage property = properties[deposits[_depositId].propertyId];
+        property.status = PropertyStatus.NOT_RENTED;
 
         payable(msg.sender).transfer(deposit.amount);
 
-        emit DepositStatusChanged(_depositId, DepositStatus.RELEASED);
+        emit DepositStatusChanged(_depositId, DepositStatus.RETAINED);
+        emit PropertyStatusChanged(_depositId, PropertyStatus.NOT_RENTED);
     }
 
     function refundDeposit(
@@ -261,10 +265,13 @@ contract SmartDeposit is Ownable {
         require(deposit.status == DepositStatus.ACTIVE, "Deposit not active");
 
         deposit.status = DepositStatus.REFUNDED;
+        Property storage property = properties[deposits[_depositId].propertyId];
+        property.status = PropertyStatus.NOT_RENTED;
 
         payable(deposit.tenant).transfer(deposit.amount);
 
         emit DepositStatusChanged(_depositId, DepositStatus.REFUNDED);
+        emit PropertyStatusChanged(_depositId, PropertyStatus.NOT_RENTED);
     }
 
     // View functions
