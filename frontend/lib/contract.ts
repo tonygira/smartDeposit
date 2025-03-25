@@ -111,9 +111,15 @@ export const SMART_DEPOSIT_ABI = [
         },
         {
           "indexed": false,
-          "internalType": "bool",
-          "name": "favorTenant",
-          "type": "bool"
+          "internalType": "enum SmartDeposit.DepositStatus",
+          "name": "status",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "tenantDepositAmount",
+          "type": "uint256"
         }
       ],
       "name": "DisputeResolved",
@@ -281,6 +287,11 @@ export const SMART_DEPOSIT_ABI = [
         },
         {
           "internalType": "uint256",
+          "name": "finalAmount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
           "name": "timestamp",
           "type": "uint256"
         },
@@ -288,6 +299,25 @@ export const SMART_DEPOSIT_ABI = [
           "internalType": "enum SmartDeposit.DepositStatus",
           "name": "status",
           "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_propertyId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getDepositIdFromProperty",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -351,6 +381,25 @@ export const SMART_DEPOSIT_ABI = [
           "internalType": "enum SmartDeposit.PropertyStatus",
           "name": "status",
           "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_depositId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getPropertyIdFromDeposit",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -461,25 +510,12 @@ export const SMART_DEPOSIT_ABI = [
           "type": "uint256"
         },
         {
-          "internalType": "bool",
-          "name": "_favorTenant",
-          "type": "bool"
-        }
-      ],
-      "name": "resolveDispute",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
           "internalType": "uint256",
-          "name": "_depositId",
+          "name": "_tenantDepositAmount",
           "type": "uint256"
         }
       ],
-      "name": "retainDeposit",
+      "name": "resolveDispute",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -499,7 +535,11 @@ export const SMART_DEPOSIT_ABI = [
     }
   ]
 
-export enum PropertyStatus {
+  
+
+
+
+  export enum PropertyStatus {
   NOT_RENTED = 0,
   RENTED = 1,
   DISPUTED = 2,
@@ -514,7 +554,7 @@ export const getPropertyStatusText = (status: number): string => {
     case PropertyStatus.DISPUTED:
       return "En litige"
     default:
-      return "Statut inconnu"
+      return "Non loué"
   }
 }
 
@@ -523,22 +563,27 @@ export enum DepositStatus {
   ACTIVE = 1,
   DISPUTED = 2,
   RETAINED = 3,
-  REFUNDED = 4,
+  PARTIALLY_REFUNDED = 4,
+  REFUNDED = 5,
 }
 
-export const getDepositStatusText = (status: number): string => {
+export function getDepositStatusText(status: number) {
+  console.log("getDepositStatusText reçoit:", status, "de type", typeof status);
+  
   switch (status) {
     case DepositStatus.PENDING:
       return "En attente"
     case DepositStatus.ACTIVE:
-      return "Actif"
+      return "Active"
     case DepositStatus.DISPUTED:
       return "En litige"
-    case DepositStatus.RETAINED:
-      return "Conservée"
     case DepositStatus.REFUNDED:
       return "Remboursée"
+    case DepositStatus.PARTIALLY_REFUNDED:
+      return "Partiellement remboursée"
+    case DepositStatus.RETAINED:
+      return "Conservée"
     default:
-      return "Statut inconnu"
+      return "En attente"
   }
 }

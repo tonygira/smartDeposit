@@ -142,7 +142,7 @@ export default function Dashboard() {
                       <h3 className="font-semibold text-lg">{property.name}</h3>
                       <Link href={`/properties/${property.id}`}>
                         <Button variant="outline" size="sm">
-                          Voir les détails
+                          Actions
                         </Button>
                       </Link>
                     </div>

@@ -33,6 +33,10 @@ export default function PropertyDetails() {
   const [showDepositRequestForm, setShowDepositRequestForm] = useState(false)
   const [depositAmount, setDepositAmount] = useState("")
 
+  // Formulaire de remboursement
+  const [showRefundForm, setShowRefundForm] = useState(false)
+  const [refundAmount, setRefundAmount] = useState("")
+
   const propertyId = Number(params.id)
 
   // Fetch property details
@@ -309,15 +313,15 @@ export default function PropertyDetails() {
   }
 
   // Récupération de l'id de deposit
-  const { data: depositData } = useReadContract({
+  const { data: depositId } = useReadContract({
     address: CONTRACT_ADDRESS as `0x${string}`,
     abi: SMART_DEPOSIT_ABI,
-    functionName: "getDepositDetails",
+    functionName: "getDepositIdFromProperty",
     args: [BigInt(propertyId)],
   });
 
   const handleRefundDeposit = async () => {
-    if (!property || !depositData) return;
+    if (!property || !depositId) return;
 
     try {
       setTransactionStatus("pending");
@@ -328,7 +332,7 @@ export default function PropertyDetails() {
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: SMART_DEPOSIT_ABI,
         functionName: "refundDeposit",
-        args: [BigInt(propertyId)],
+        args: [BigInt(depositId)],
       });
     } catch (error) {
       console.error("Erreur lors du remboursement de la caution:", error);
@@ -349,7 +353,7 @@ export default function PropertyDetails() {
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: SMART_DEPOSIT_ABI,
         functionName: "initiateDispute",
-        args: [BigInt(propertyId)],
+        args: [BigInt(depositId)],
       })
     } catch (error) {
       console.error("Erreur lors de l'ouverture du litige:", error)
@@ -358,26 +362,31 @@ export default function PropertyDetails() {
     }
   }
 
-  const handleResolveDispute = async () => {
-    if (!property) return
+  const handleShowRefundForm = () => {
+    setRefundAmount(property.depositAmount);
+    setShowRefundForm(true);
+  };
 
+  const handleResolveDispute = async () => {
+    if (!property || !refundAmount) return;
+    
     try {
       setTransactionStatus("pending");
       setTxType("resolve");
       setError(null);
-
+      
       writeResolveContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: SMART_DEPOSIT_ABI,
         functionName: "resolveDispute",
-        args: [BigInt(propertyId), true], // true = en faveur du locataire (à adapter selon besoin)
-      })
+        args: [BigInt(depositId), parseEther(refundAmount)],
+      });
     } catch (error) {
-      console.error("Erreur lors de la résolution du litige:", error)
+      console.error("Erreur lors de la résolution du litige:", error);
       setTransactionStatus("error");
       setError("Une erreur s'est produite lors de l'envoi de la transaction de résolution de litige.");
     }
-  }
+  };
 
   // Afficher les messages en fonction du type de transaction réussie
   const getSuccessMessage = () => {
@@ -729,20 +738,57 @@ export default function PropertyDetails() {
                     )}
 
                     {property.status === "En litige" && (
-                      <Button
-                        onClick={handleResolveDispute}
-                        size="sm"
-                        disabled={isFormDisabled}
-                      >
-                        {isFormDisabled && txType === "resolve" ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            En cours...
-                          </>
+                      <div className="space-y-4">
+                        {!showRefundForm ? (
+                          <Button
+                            onClick={handleShowRefundForm}
+                            size="sm"
+                            disabled={isFormDisabled}
+                          >
+                            Régler le litige
+                          </Button>
                         ) : (
-                          "Régler le litige"
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="refundAmount">Montant à rembourser (ETH)</Label>
+                              <Input
+                                id="refundAmount"
+                                type="number"
+                                value={refundAmount}
+                                onChange={(e) => setRefundAmount(e.target.value)}
+                                step="0.000000000000000001"
+                                min="0"
+                                max={property.depositAmount}
+                                className="w-full"
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                onClick={handleResolveDispute}
+                                size="sm"
+                                disabled={isFormDisabled || !refundAmount}
+                              >
+                                {isFormDisabled && txType === "resolve" ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    En cours...
+                                  </>
+                                ) : (
+                                  "Confirmer le remboursement"
+                                )}
+                              </Button>
+                              <Button
+                                onClick={() => setShowRefundForm(false)}
+                                variant="outline"
+                                size="sm"
+                                disabled={isFormDisabled}
+                              >
+                                Annuler
+                              </Button>
+                            </div>
+                          </div>
                         )}
-                      </Button>
+                      </div>
                     )}
                   </div>
                 )}
