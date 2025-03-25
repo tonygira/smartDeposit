@@ -12,12 +12,13 @@ async function main() {
   const address = await smartDeposit.getAddress();
   console.log(`Contrat SmartDeposit déployé à l'adresse: ${address}`);
   
+    /*
   // Vérification sur Etherscan (attendre quelques blocs)
   console.log("Attente de quelques blocs avant la vérification...");
   await new Promise(resolve => setTimeout(resolve, 40000)); // 40 secondes d'attente
   
   // Vérification du contrat
-  try {
+try {
     console.log("Vérification du contrat sur Etherscan...");
     await run("verify:verify", {
       address: address,
@@ -26,7 +27,7 @@ async function main() {
     console.log("Contrat vérifié avec succès!");
   } catch (error) {
     console.log("Erreur lors de la vérification:", error);
-  }
+  }*/
 }
 
 // Exécution du script

@@ -6,16 +6,18 @@ import { formatEther } from "viem"
 import { Header } from "@/components/header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getDepositStatusText, DepositStatus } from "@/lib/contract"
+import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getDepositStatusText, DepositStatus, getPropertyStatusText } from "@/lib/contract"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
 import { QrCode } from "lucide-react"
+import { client } from "@/lib/client"
 
 export default function Deposits() {
   const { address, isConnected } = useAccount()
   const [deposits, setDeposits] = useState<any[]>([])
   const [properties, setProperties] = useState<Record<number, any>>({})
+  const [propertyIds, setPropertyIds] = useState<number[]>([])
   const router = useRouter()
 
   // Get deposit IDs
@@ -38,28 +40,39 @@ export default function Deposits() {
     enabled: isConnected && !!depositIds && depositIds.length > 0,
   })
 
-  // Process deposit data
+  // Process deposit data and extract property IDs
   useEffect(() => {
     if (depositsData) {
       const fetchedDeposits = depositsData
         .map((result, index) => {
           if (result.status === "success" && result.result) {
-            const [id, propertyId, tenant, amount, timestamp, status] = result.result as [
-              bigint,
-              bigint,
-              string,
-              bigint,
-              bigint,
-              number,
-            ]
-            return {
-              id: Number(id),
-              propertyId: Number(propertyId),
-              tenant,
-              amount: formatEther(amount),
-              timestamp: new Date(Number(timestamp) * 1000).toLocaleDateString(),
-              status: getDepositStatusText(status),
-              statusCode: status,
+            const resultArray = result.result as any[];
+            
+            try {
+              const [id, propertyId, tenant, amount, finalAmount, timestamp, status] = resultArray as [
+                bigint,
+                bigint,
+                string,
+                bigint,
+                bigint,
+                bigint,
+                number,
+              ]
+
+              return {
+                id: Number(id),
+                propertyId: Number(propertyId),
+                tenant,
+                amount: formatEther(amount),
+                finalAmount: formatEther(finalAmount),
+                timestamp: new Date(Number(timestamp) * 1000).toLocaleDateString(),
+                status: getDepositStatusText(Number(status)),
+                statusCode: Number(status),
+              }
+            } catch (error) {
+              console.error(`Erreur lors du traitement de la caution #${index}:`, error);
+              console.error("Structure des données reçues:", resultArray);
+              return null;
             }
           }
           return null
@@ -69,22 +82,62 @@ export default function Deposits() {
       setDeposits(fetchedDeposits)
 
       // Get unique property IDs to fetch property details
-      const propertyIds = [...new Set(fetchedDeposits.map((d) => d.propertyId))]
-
-      // Fetch property details for each deposit
-      propertyIds.forEach(async (propertyId) => {
-        try {
-          const propertyData = await fetch(`/api/properties/${propertyId}`).then((res) => res.json())
-          setProperties((prev) => ({
-            ...prev,
-            [propertyId]: propertyData,
-          }))
-        } catch (error) {
-          console.error(`Error fetching property ${propertyId}:`, error)
-        }
-      })
+      const uniquePropertyIds = [...new Set(fetchedDeposits.map((d) => d.propertyId))]
+      setPropertyIds(uniquePropertyIds)
     }
   }, [depositsData])
+
+  // Fetch property details (separate from deposit processing)
+  const { data: propertiesData } = useReadContracts({
+    contracts: propertyIds.map((propertyId) => ({
+      address: CONTRACT_ADDRESS as `0x${string}`,
+      abi: SMART_DEPOSIT_ABI,
+      functionName: "getPropertyDetails",
+      args: [BigInt(propertyId)],
+    })),
+    enabled: isConnected && propertyIds.length > 0,
+  });
+
+  // Process property data
+  useEffect(() => {
+    if (propertiesData) {
+      const processedProperties = propertiesData
+        .map((result, index) => {
+          if (result.status === "success" && result.result) {
+            const [id, landlord, name, location, depositAmount, status] = result.result as [
+              bigint,
+              string,
+              string,
+              string,
+              bigint,
+              number,
+            ];
+
+            return {
+              propertyId: propertyIds[index],
+              data: {
+                id: Number(id),
+                landlord,
+                name,
+                location,
+                depositAmount: formatEther(depositAmount),
+                status: getPropertyStatusText(status),
+              },
+            };
+          }
+          return null;
+        })
+        .filter(Boolean)
+        .reduce((acc, item) => {
+          if (item) {
+            acc[item.propertyId] = item.data;
+          }
+          return acc;
+        }, {} as Record<number, any>);
+
+      setProperties(processedProperties);
+    }
+  }, [propertiesData, propertyIds]);
 
   const getStatusColor = (statusCode: number) => {
     switch (statusCode) {
@@ -94,10 +147,12 @@ export default function Deposits() {
         return "bg-blue-100 text-blue-800"
       case DepositStatus.DISPUTED:
         return "bg-red-100 text-red-800"
-      case DepositStatus.RELEASED:
-        return "bg-green-100 text-green-800"
       case DepositStatus.REFUNDED:
+        return "bg-green-100 text-green-800"
+      case DepositStatus.PARTIALLY_REFUNDED:
         return "bg-purple-100 text-purple-800"
+      case DepositStatus.RETAINED:
+        return "bg-gray-100 text-gray-800"
       default:
         return "bg-gray-100 text-gray-800"
     }
@@ -139,36 +194,62 @@ export default function Deposits() {
         </div>
 
         {deposits.length > 0 ? (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {deposits.map((deposit) => (
-              <Card key={deposit.id}>
-                <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <CardTitle>Caution #{deposit.id}</CardTitle>
-                    <Badge variant="outline" className={getStatusColor(deposit.statusCode)}>
-                      {deposit.status}
-                    </Badge>
-                  </div>
-                  <CardDescription>Identifiant du bien : {deposit.propertyId}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <p>
-                      <strong>Montant:</strong> {deposit.amount} ETH
-                    </p>
-                    <p>
-                      <strong>Date:</strong> {deposit.timestamp}
-                    </p>
-
-                    <div className="pt-4">
-                      <Link href={`/deposits/${deposit.id}`}>
-                        <Button className="w-full">Voir les détails</Button>
-                      </Link>
+          <div className="flex flex-col gap-6">
+            {deposits.map((deposit) => {
+              const property = properties[deposit.propertyId];
+              return (
+                <Card key={deposit.id} className="w-full">
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <CardTitle>Caution #{deposit.id}</CardTitle>
+                      <Badge variant="outline" className={getStatusColor(deposit.statusCode)}>
+                        {deposit.status}
+                      </Badge>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                    <CardDescription>
+                      {property ? (
+                        <>
+                          <p className="mt-1 font-medium text-primary">{property.name}</p>
+                          <p className="mt-1">{property.location}</p>
+                        </>
+                      ) : (
+                        <>Identifiant du bien : {deposit.propertyId}</>
+                      )}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <p>
+                        <strong>Montant:</strong> {deposit.amount} ETH
+                      </p>
+                      {(deposit.statusCode === DepositStatus.REFUNDED || 
+                        deposit.statusCode === DepositStatus.PARTIALLY_REFUNDED || 
+                        deposit.statusCode === DepositStatus.RETAINED) && (
+                        <p>
+                          <strong>Montant remboursé:</strong> {deposit.finalAmount} ETH 
+                          {deposit.statusCode !== DepositStatus.RETAINED && (
+                            <span className="ml-2 text-sm">
+                              ({(Number(deposit.finalAmount) / Number(deposit.amount) * 100).toFixed(1)}% de la caution)
+                            </span>
+                          )}
+                          {deposit.statusCode === DepositStatus.RETAINED && (
+                            <span className="ml-2 text-sm">(0% de la caution)</span>
+                          )}
+                        </p>
+                      )}
+                      <p>
+                        <strong>Date:</strong> {deposit.timestamp}
+                      </p>
+                      {property && (
+                        <p>
+                          <strong>Propriétaire:</strong> {property.landlord.slice(0, 6)}...{property.landlord.slice(-4)}
+                        </p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         ) : (
           <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-100">
