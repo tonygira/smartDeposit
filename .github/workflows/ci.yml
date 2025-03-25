@@ -3,9 +3,12 @@ name: Smart Deposit Backend Tests
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'backend/**'
   pull_request:
     branches: [ "main" ]
-
+    paths:
+    - 'backend/**'
 jobs:
   test-backend:
     runs-on: ubuntu-latest
