@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ["latin"] })
 
 export const metadata = {
   title: "Smart Deposit",
-  description: "A decentralized application for managing real estate security deposits",
+  description: "Une application décentralisée pour la gestion des cautions",
     generator: 'v0.dev'
 }
 

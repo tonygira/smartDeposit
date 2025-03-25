@@ -447,19 +447,6 @@ export const SMART_DEPOSIT_ABI = [
       "type": "function"
     },
     {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "_depositId",
-          "type": "uint256"
-        }
-      ],
-      "name": "releaseDeposit",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
       "inputs": [],
       "name": "renounceOwnership",
       "outputs": [],
@@ -487,6 +474,19 @@ export const SMART_DEPOSIT_ABI = [
     {
       "inputs": [
         {
+          "internalType": "uint256",
+          "name": "_depositId",
+          "type": "uint256"
+        }
+      ],
+      "name": "retainDeposit",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "address",
           "name": "newOwner",
           "type": "address"
@@ -498,7 +498,7 @@ export const SMART_DEPOSIT_ABI = [
       "type": "function"
     }
   ]
-  
+
 export enum PropertyStatus {
   NOT_RENTED = 0,
   RENTED = 1,
@@ -522,7 +522,7 @@ export enum DepositStatus {
   PENDING = 0,
   ACTIVE = 1,
   DISPUTED = 2,
-  RELEASED = 3,
+  RETAINED = 3,
   REFUNDED = 4,
 }
 
@@ -534,7 +534,7 @@ export const getDepositStatusText = (status: number): string => {
       return "Actif"
     case DepositStatus.DISPUTED:
       return "En litige"
-    case DepositStatus.RELEASED:
+    case DepositStatus.RETAINED:
       return "Conservée"
     case DepositStatus.REFUNDED:
       return "Remboursée"
