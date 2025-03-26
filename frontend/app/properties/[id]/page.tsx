@@ -321,7 +321,7 @@ export default function PropertyDetails() {
   });
 
   const handleRefundDeposit = async () => {
-    if (!property || !depositId) return;
+    if (!property || depositId === 0) return;
 
     try {
       setTransactionStatus("pending");
@@ -342,7 +342,7 @@ export default function PropertyDetails() {
   };
 
   const handleInitiateDispute = async () => {
-    if (!property) return
+    if (!property || depositId === 0) return
 
     try {
       setTransactionStatus("pending");
@@ -368,7 +368,7 @@ export default function PropertyDetails() {
   };
 
   const handleResolveDispute = async () => {
-    if (!property || !refundAmount) return;
+    if (!property || depositId === 0 || !refundAmount) return;
     
     try {
       setTransactionStatus("pending");
