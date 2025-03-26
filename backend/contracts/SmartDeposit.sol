@@ -65,7 +65,7 @@ contract SmartDeposit is Ownable {
     event DisputeResolved(
         uint256 indexed depositId,
         DepositStatus status,
-        uint256 tenantDepositAmount
+        uint256 refundedAmount
     );
     event PropertyStatusChanged(
         uint256 indexed propertyId,
@@ -85,26 +85,6 @@ contract SmartDeposit is Ownable {
 
     modifier onlyTenant(uint256 _depositId) {
         require(deposits[_depositId].tenant == msg.sender, "Not the tenant");
-        _;
-    }
-
-    modifier onlyDepositTenantOrOwner(uint256 _depositId) {
-        require(
-            properties[deposits[_depositId].propertyId].landlord ==
-                msg.sender ||
-                deposits[_depositId].tenant == msg.sender,
-            "Not the owner or the tenant"
-        );
-        _;
-    }
-
-    modifier onlyOwnerOrDepositTenant(uint256 _propertyId) {
-        require(
-            properties[_propertyId].landlord == msg.sender ||
-                deposits[properties[_propertyId].depositId].tenant ==
-                msg.sender,
-            "Not the owner or the tenant"
-        );
         _;
     }
 
@@ -223,8 +203,8 @@ contract SmartDeposit is Ownable {
         uint256 _depositId
     )
         external
-        onlyLandlord(deposits[_depositId].propertyId)
         depositExists(_depositId)
+        onlyLandlord(deposits[_depositId].propertyId)
     {
         Deposit storage deposit = deposits[_depositId];
         require(deposit.status == DepositStatus.ACTIVE, "Deposit not active");
@@ -245,45 +225,41 @@ contract SmartDeposit is Ownable {
 
     function resolveDispute(
         uint256 _depositId,
-        uint256 _tenantDepositAmount
+        uint256 _refundedAmount
     )
         external
-        onlyLandlord(deposits[_depositId].propertyId)
         depositExists(_depositId)
+        onlyLandlord(deposits[_depositId].propertyId)
     {
         Deposit storage deposit = deposits[_depositId];
+
         require(
             deposit.status == DepositStatus.DISPUTED,
             "Deposit not disputed"
         );
 
-        Property storage property = properties[deposit.propertyId];
         require(
-            property.status == PropertyStatus.DISPUTED,
-            "Property not disputed"
-        );
-        require(
-            _tenantDepositAmount <= deposit.amount,
+            _refundedAmount <= deposit.amount,
             "Tenant deposit amount is greater than the deposit amount"
         );
 
+        Property storage property = properties[deposit.propertyId];
         property.status = PropertyStatus.NOT_RENTED;
 
         // refund, partially refund or retain the deposit
-        if (_tenantDepositAmount == deposit.amount) {
+        if (_refundedAmount == deposit.amount) {
             deposit.status = DepositStatus.REFUNDED;
             deposit.finalAmount = deposit.amount;
             payable(deposit.tenant).transfer(deposit.amount);
         } else if (
-            (_tenantDepositAmount > 0) &&
-            (_tenantDepositAmount < deposit.amount)
+            (_refundedAmount > 0) && (_refundedAmount < deposit.amount)
         ) {
             deposit.status = DepositStatus.PARTIALLY_REFUNDED;
-            deposit.finalAmount = _tenantDepositAmount;
+            deposit.finalAmount = _refundedAmount;
             payable(properties[deposit.propertyId].landlord).transfer(
-                deposit.amount - _tenantDepositAmount
+                deposit.amount - _refundedAmount
             );
-            payable(deposit.tenant).transfer(_tenantDepositAmount);
+            payable(deposit.tenant).transfer(_refundedAmount);
         } else {
             deposit.status = DepositStatus.RETAINED;
             deposit.finalAmount = 0;
@@ -292,7 +268,7 @@ contract SmartDeposit is Ownable {
             );
         }
 
-        emit DisputeResolved(_depositId, deposit.status, _tenantDepositAmount);
+        emit DisputeResolved(_depositId, deposit.status, _refundedAmount);
         emit DepositStatusChanged(_depositId, deposit.status);
         emit PropertyStatusChanged(
             deposit.propertyId,
@@ -304,8 +280,8 @@ contract SmartDeposit is Ownable {
         uint256 _depositId
     )
         external
-        onlyLandlord(deposits[_depositId].propertyId)
         depositExists(_depositId)
+        onlyLandlord(deposits[_depositId].propertyId)
     {
         Deposit storage deposit = deposits[_depositId];
         require(deposit.status == DepositStatus.ACTIVE, "Deposit not active");
@@ -341,7 +317,6 @@ contract SmartDeposit is Ownable {
         external
         view
         propertyExists(_propertyId)
-        onlyOwnerOrDepositTenant(_propertyId)
         returns (
             uint256 id,
             address landlord,
@@ -364,13 +339,13 @@ contract SmartDeposit is Ownable {
 
     function getDepositIdFromProperty(
         uint256 _propertyId
-    ) external view onlyOwnerOrDepositTenant(_propertyId) returns (uint256) {
+    ) external view returns (uint256) {
         return properties[_propertyId].depositId;
     }
 
     function getPropertyIdFromDeposit(
         uint256 _depositId
-    ) external view onlyDepositTenantOrOwner(_depositId) returns (uint256) {
+    ) external view returns (uint256) {
         return deposits[_depositId].propertyId;
     }
 
@@ -380,7 +355,6 @@ contract SmartDeposit is Ownable {
         external
         view
         depositExists(_depositId)
-        onlyDepositTenantOrOwner(_depositId)
         returns (
             uint256 id,
             uint256 propertyId,

@@ -23,6 +23,24 @@ export default function Dashboard() {
     enabled: isConnected && !!address,
   })
 
+  // Debug access check for each property
+  const { data: debugData } = useReadContracts({
+    contracts: ((propertyIds as bigint[]) || []).map((id) => ({
+      address: CONTRACT_ADDRESS as `0x${string}`,
+      abi: SMART_DEPOSIT_ABI,
+      functionName: "debugCheckAccess",
+      args: [id, address],
+    })),
+    enabled: isConnected && !!propertyIds && propertyIds.length > 0,
+  })
+
+  // Log des données de débogage
+  useEffect(() => {
+    if (debugData) {
+      console.log("Données de débogage d'accès:", debugData);
+    }
+  }, [debugData]);
+
   // Fetch property details
   const { data: propertiesData } = useReadContracts({
     contracts: ((propertyIds as bigint[]) || []).map((id) => ({
@@ -33,6 +51,11 @@ export default function Dashboard() {
     })),
     enabled: isConnected && !!propertyIds && propertyIds.length > 0,
   })
+
+  // Log des données des propriétés
+  useEffect(() => {
+    console.log("Données brutes des propriétés:", propertiesData);
+  }, [propertiesData]);
 
   // Process property data
   useEffect(() => {

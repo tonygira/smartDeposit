@@ -17,10 +17,10 @@ import {
 const config = getDefaultConfig({
   appName: 'Smart Deposit',
   projectId: process.env.NEXT_PUBLIC_RAINBOW_PROJECT_ID || 'PROJECT_ID_NOT_SET',
-  //chains: [hardhat, sepolia],
-  chains: [sepolia],
+  chains: [hardhat, sepolia],
+  // chains: [sepolia],
   transports: {
-    //[hardhat.id]: http(),
+    [hardhat.id]: http(),
     [sepolia.id]: http(process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL),
   }
 })
