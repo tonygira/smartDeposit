@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useAccount, useReadContract, useReadContracts } from "wagmi"
+import { useAccount, useReadContract, useReadContracts, useBalance } from "wagmi"
 import { formatEther } from "viem"
 import { Header } from "@/components/header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getPropertyStatusText, getDepositStatusText, DepositStatus } from "@/lib/contract"
 import Link from "next/link"
-import { Home, Key, AlertTriangle, CheckCircle, FileText, File, Calendar, Wallet, Ban } from "lucide-react"
+import { Home, Key, AlertTriangle, CheckCircle, FileText, File, Calendar, Wallet, Ban, Coins } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 const formatDate = (timestamp: number) => {
@@ -27,6 +27,11 @@ export default function Dashboard() {
   const { address, isConnected } = useAccount()
   const [landlordProperties, setLandlordProperties] = useState<any[]>([])
   const router = useRouter()
+
+  // Récupérer la balance du compte connecté
+  const { data: balanceData } = useBalance({
+    address: address,
+  })
 
   // Get property IDs
   const { data: propertyIds, refetch: refetchPropertyIds } = useReadContract({
@@ -48,7 +53,7 @@ export default function Dashboard() {
   const { data: propertiesData } = useReadContracts({
     contracts: ((propertyIds as bigint[]) || []).map((id) => ({
       address: CONTRACT_ADDRESS as `0x${string}`,
-      abi: SMART_DEPOSIT_ABI,
+      abi: SMART_DEPOSIT_ABI as any,
       functionName: "getPropertyDetails",
       args: [id],
     })),
@@ -116,6 +121,7 @@ export default function Dashboard() {
             tenant,
             amount: formatEther(amount),
             finalAmount: formatEther(finalAmount),
+            retainedAmount: formatEther(amount - finalAmount),
             creationDate: Number(creationDate),
             paymentDate: Number(paymentDate),
             refundDate: Number(refundDate),
@@ -200,7 +206,7 @@ export default function Dashboard() {
       case DepositStatus.PAID:
         return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Payée</Badge>
       case DepositStatus.DISPUTED:
-        return <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">En litige</Badge>
+        return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">En litige</Badge>
       case DepositStatus.REFUNDED:
         return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Remboursée</Badge>
       case DepositStatus.PARTIALLY_REFUNDED:
@@ -216,7 +222,13 @@ export default function Dashboard() {
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="flex-1 container py-12">
-        <h1 className="text-3xl font-bold mb-8">Votre tableau de bord</h1>
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold">Votre tableau de bord</h1>
+          <div className="flex items-center text-sm text-gray-600">
+            <Coins className="h-4 w-4 mr-2 text-gray-500" />
+            Balance du compte : {balanceData ? `${parseFloat(balanceData.formatted).toFixed(4)} ${balanceData.symbol}` : '0 ETH'}
+          </div>
+        </div>
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
           <Card>
@@ -272,7 +284,10 @@ export default function Dashboard() {
                 {landlordProperties.map((property) => {
                   const deposit = depositDetails[property.id];
                   return (
-                    <div key={property.id} className="border rounded-lg p-4">
+                    <div
+                      key={property.id}
+                      className={`border rounded-lg p-4 ${deposit?.status === DepositStatus.DISPUTED ? 'bg-red-50' : ''}`}
+                    >
                       <div className="flex justify-between items-center mb-2">
                         <h3 className="font-semibold text-lg">{property.name}</h3>
                         <Link href={`/properties/${property.id}`}>
@@ -330,6 +345,13 @@ export default function Dashboard() {
                               <div className="flex items-center mt-1 text-sm">
                                 {getDepositStatusBadge(deposit.status)}
                               </div>
+                              {(deposit.status === DepositStatus.PARTIALLY_REFUNDED ||
+                                deposit.status === DepositStatus.RETAINED) && (
+                                  <div className="flex items-center mt-1.5 text-sm">
+                                    <Coins className="h-3.5 w-3.5 mr-1 text-red-500" />
+                                    <span>Montant conservé: {deposit.retainedAmount} ETH</span>
+                                  </div>
+                                )}
                               <div className="flex items-start mt-1.5 text-sm">
                                 <Calendar className="h-3.5 w-3.5 mr-1 text-gray-500 mt-0.5" />
                                 <div className="flex flex-col">

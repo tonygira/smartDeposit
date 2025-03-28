@@ -10,7 +10,7 @@ import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getDepositStatusText, DepositStatu
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
-import { QrCode } from "lucide-react"
+import { QrCode, Wallet, Calendar, Home, MapPin, User, ArrowDownCircle, ArrowUpCircle, AlertTriangle, Coins, CheckCircle, XCircle, Clock } from "lucide-react"
 
 export default function Deposits() {
   const { address, isConnected } = useAccount()
@@ -25,7 +25,6 @@ export default function Deposits() {
     abi: SMART_DEPOSIT_ABI,
     functionName: "getTenantDeposits",
     args: [address],
-    enabled: isConnected && !!address,
   })
 
   // Rafraîchir les données lorsque l'adresse change
@@ -44,11 +43,10 @@ export default function Deposits() {
   const { data: depositsData } = useReadContracts({
     contracts: ((depositIds as bigint[]) || []).map((id) => ({
       address: CONTRACT_ADDRESS as `0x${string}`,
-      abi: SMART_DEPOSIT_ABI,
+      abi: SMART_DEPOSIT_ABI as any,
       functionName: "getDepositDetails",
       args: [id],
     })),
-    enabled: isConnected && !!depositIds && depositIds.length > 0,
   })
 
   // Process deposit data and extract property IDs
@@ -58,7 +56,7 @@ export default function Deposits() {
         .map((result, index) => {
           if (result.status === "success" && result.result) {
             const resultArray = result.result as any[];
-            
+
             try {
               const [id, propertyId, tenant, amount, finalAmount, creationDate, paymentDate, refundDate, status, depositCode] = resultArray as [
                 bigint,
@@ -79,6 +77,7 @@ export default function Deposits() {
                 tenant,
                 amount: formatEther(amount),
                 finalAmount: formatEther(finalAmount),
+                retainedAmount: formatEther(amount - finalAmount),
                 creationDate: Number(creationDate),
                 paymentDate: Number(paymentDate),
                 refundDate: Number(refundDate),
@@ -99,7 +98,7 @@ export default function Deposits() {
       setDeposits(fetchedDeposits)
 
       // Get unique property IDs to fetch property details
-      const uniquePropertyIds = [...new Set(fetchedDeposits.map((d) => d.propertyId))]
+      const uniquePropertyIds = [...new Set(fetchedDeposits.filter(d => d !== null).map((d) => d.propertyId))]
       setPropertyIds(uniquePropertyIds)
     }
   }, [depositsData])
@@ -108,11 +107,10 @@ export default function Deposits() {
   const { data: propertiesData } = useReadContracts({
     contracts: propertyIds.map((propertyId) => ({
       address: CONTRACT_ADDRESS as `0x${string}`,
-      abi: SMART_DEPOSIT_ABI,
+      abi: SMART_DEPOSIT_ABI as any,
       functionName: "getPropertyDetails",
       args: [BigInt(propertyId)],
     })),
-    enabled: isConnected && propertyIds.length > 0,
   });
 
   // Process property data
@@ -156,22 +154,56 @@ export default function Deposits() {
     }
   }, [propertiesData, propertyIds]);
 
-  const getStatusColor = (statusCode: number) => {
+  const getDepositStatusBadge = (statusCode: number) => {
     switch (statusCode) {
       case DepositStatus.PENDING:
-        return "bg-yellow-100 text-yellow-800"
+        return (
+          <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 flex items-center">
+            <Clock className="h-3.5 w-3.5 mr-1" />
+            En attente
+          </Badge>
+        )
       case DepositStatus.PAID:
-        return "bg-blue-100 text-blue-800"
+        return (
+          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 flex items-center">
+            <CheckCircle className="h-3.5 w-3.5 mr-1" />
+            Payée
+          </Badge>
+        )
       case DepositStatus.DISPUTED:
-        return "bg-red-100 text-red-800"
+        return (
+          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 flex items-center">
+            <AlertTriangle className="h-3.5 w-3.5 mr-1" />
+            En litige
+          </Badge>
+        )
       case DepositStatus.REFUNDED:
-        return "bg-green-100 text-green-800"
+        return (
+          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 flex items-center">
+            <ArrowUpCircle className="h-3.5 w-3.5 mr-1" />
+            Remboursée
+          </Badge>
+        )
       case DepositStatus.PARTIALLY_REFUNDED:
-        return "bg-purple-100 text-purple-800"
+        return (
+          <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 flex items-center">
+            <ArrowUpCircle className="h-3.5 w-3.5 mr-1" />
+            Partiellement remboursée
+          </Badge>
+        )
       case DepositStatus.RETAINED:
-        return "bg-gray-100 text-gray-800"
+        return (
+          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 flex items-center">
+            <XCircle className="h-3.5 w-3.5 mr-1" />
+            Conservée
+          </Badge>
+        )
       default:
-        return "bg-gray-100 text-gray-800"
+        return (
+          <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">
+            Inconnue
+          </Badge>
+        )
     }
   }
 
@@ -182,12 +214,12 @@ export default function Deposits() {
   // Fonction pour formater une date
   const formatDate = (timestamp: number | null) => {
     if (!timestamp) return "Date inconnue";
-    return new Date(timestamp * 1000).toLocaleDateString('fr-FR', { 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric', 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return new Date(timestamp * 1000).toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
@@ -211,9 +243,9 @@ export default function Deposits() {
       <main className="flex-1 container py-12">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
           <h1 className="text-3xl font-bold">Vos cautions</h1>
-          <Button 
-            onClick={handleCodeButtonClick} 
-            variant="outline" 
+          <Button
+            onClick={handleCodeButtonClick}
+            variant="outline"
             className="flex items-center mt-4 md:mt-0"
             style={{ backgroundColor: "#7759F9", color: "white" }}
           >
@@ -226,78 +258,94 @@ export default function Deposits() {
           <div className="flex flex-col gap-6">
             {deposits.map((deposit) => {
               const property = properties[deposit.propertyId];
-              
+
               return (
-                <Card key={deposit.id} className="w-full">
+                <Card
+                  key={deposit.id}
+                  className={`w-full shadow-sm hover:shadow-md transition-shadow duration-200 ${deposit.statusCode === DepositStatus.DISPUTED ? 'bg-red-50' : ''}`}
+                >
                   <CardHeader>
                     <div className="flex justify-between items-start">
-                      <CardTitle>Caution #{deposit.id}</CardTitle>
-                      <Badge variant="outline" className={getStatusColor(deposit.statusCode)}>
-                        {deposit.status}
-                      </Badge>
+                      <CardTitle className="flex items-center">
+                        <Wallet className="h-5 w-5 mr-2 text-primary" />
+                        Caution #{deposit.id}
+                      </CardTitle>
+                      {getDepositStatusBadge(deposit.statusCode)}
                     </div>
                     <CardDescription>
                       {property ? (
-                        <>
-                          <p className="mt-1 font-medium text-primary">{property.name}</p>
-                          <p className="mt-1">{property.location}</p>
-                        </>
+                        <div className="mt-2 grid md:grid-cols-2 gap-4">
+                          <div>
+                            <div className="flex items-center text-primary">
+                              <Home className="h-4 w-4 mr-1.5" />
+                              <span className="font-medium">{property.name}</span>
+                            </div>
+                            <div className="flex items-center mt-1 text-gray-500">
+                              <MapPin className="h-4 w-4 mr-1.5" />
+                              <span>{property.location}</span>
+                            </div>
+                            <div className="flex items-center mt-1 text-gray-500">
+                              <User className="h-4 w-4 mr-1.5" />
+                              <span className="text-xs">{property.landlord.slice(0, 6)}...{property.landlord.slice(-4)}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex items-center">
+                              <Calendar className="h-4 w-4 mr-1.5 text-gray-500" />
+                              <div>
+                                <span className="text-xs text-gray-500">Création: {formatDate(deposit.creationDate)}</span>
+                                {deposit.statusCode !== DepositStatus.PENDING && deposit.paymentDate > 0 && (
+                                  <span className="text-xs text-gray-500 block">Versement: {formatDate(deposit.paymentDate)}</span>
+                                )}
+                                {deposit.refundDate > 0 && (
+                                  <span className="text-xs text-gray-500 block">Remboursement: {formatDate(deposit.refundDate)}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       ) : (
-                        <>Identifiant du bien : {deposit.propertyId}</>
+                        <div className="flex items-center mt-2">
+                          <Home className="h-4 w-4 mr-1.5 text-gray-400" />
+                          <span>Identifiant du bien : {deposit.propertyId}</span>
+                        </div>
                       )}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-3">
-                      {deposit.statusCode === DepositStatus.PAID ? (
-                        <p>
-                          <strong>Montant versé:</strong> {deposit.amount} ETH
-                          {deposit.paymentDate > 0 && (
-                            <span className="ml-2 text-sm text-gray-600">
-                              (le {formatDate(deposit.paymentDate)})
-                            </span>
-                          )}
-                        </p>
-                      ) : (
-                        <p>
-                          <strong>Montant:</strong> {deposit.amount} ETH
-                        </p>
-                      )}
-                      {(deposit.statusCode === DepositStatus.REFUNDED || 
-                        deposit.statusCode === DepositStatus.PARTIALLY_REFUNDED || 
-                        deposit.statusCode === DepositStatus.RETAINED) && (
-                        <>
-                          <p>
-                            <strong>Montant remboursé:</strong> {deposit.finalAmount} ETH 
-                            {deposit.statusCode !== DepositStatus.RETAINED && (
-                              <span className="ml-2 text-sm">
-                                ({(Number(deposit.finalAmount) / Number(deposit.amount) * 100).toFixed(1)}% de la caution)
-                              </span>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-3">
+                        <div className="flex items-center">
+                          <ArrowDownCircle className={`h-4 w-4 mr-2 ${deposit.statusCode === DepositStatus.PAID ? 'text-green-500' : 'text-blue-500'}`} />
+                          <div>
+                            <p className="font-medium">Montant versé</p>
+                            <p className="text-lg font-semibold">{deposit.amount} ETH</p>
+                            {deposit.paymentDate > 0 && (
+                              <div className="flex items-center text-xs text-gray-500 mt-0.5">
+                                <Calendar className="h-3 w-3 mr-1" />
+                                <span>Le {formatDate(deposit.paymentDate)}</span>
+                              </div>
                             )}
-                            {deposit.statusCode === DepositStatus.RETAINED && (
-                              <span className="ml-2 text-sm">(0% de la caution)</span>
-                            )}
-                          </p>
-                          {deposit.refundDate > 0 && (
-                            <p>
-                              <strong>Date de remboursement:</strong> {formatDate(deposit.refundDate)}
-                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        {(deposit.statusCode === DepositStatus.REFUNDED ||
+                          deposit.statusCode === DepositStatus.PARTIALLY_REFUNDED ||
+                          deposit.statusCode === DepositStatus.RETAINED) && (
+                            <div className="flex items-center">
+                              <ArrowUpCircle className={`h-4 w-4 mr-2 ${deposit.statusCode === DepositStatus.REFUNDED ? 'text-green-500' : deposit.statusCode === DepositStatus.PARTIALLY_REFUNDED ? 'text-orange-500' : 'text-red-500'}`} />
+                              <div>
+                                <p className="font-medium">Montant remboursé</p>
+                                <p className="text-lg font-semibold">{deposit.finalAmount} ETH</p>
+                                <p className="text-xs text-gray-500">
+                                  {(Number(deposit.finalAmount) / Number(deposit.amount) * 100).toFixed(1)}% de la caution
+                                </p>
+                              </div>
+                            </div>
                           )}
-                        </>
-                      )}
-                      <p>
-                        <strong>Date de création:</strong> {formatDate(deposit.creationDate)}
-                      </p>
-                      {deposit.statusCode !== DepositStatus.PENDING && deposit.paymentDate > 0 && (
-                        <p>
-                          <strong>Date de versement:</strong> {formatDate(deposit.paymentDate)}
-                        </p>
-                      )}
-                      {property && (
-                        <p>
-                          <strong>Propriétaire:</strong> {property.landlord.slice(0, 6)}...{property.landlord.slice(-4)}
-                        </p>
-                      )}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
