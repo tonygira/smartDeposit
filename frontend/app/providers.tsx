@@ -21,7 +21,7 @@ const config = getDefaultConfig({
   // chains: [sepolia],
   transports: {
     [hardhat.id]: http(),
-    [sepolia.id]: http(process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL),
+    //[sepolia.id]: http(process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL),
   }
 })
 

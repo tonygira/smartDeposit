@@ -24,6 +24,22 @@ contract SmartDeposit is Ownable {
         DepositStatus status;
     }
 
+    // Structure simplifiée pour les fichiers IPFS
+    struct FileReference {
+        string cid; // Content ID sur IPFS
+        uint256 uploadTimestamp; // Timestamp de l'upload
+        FileType fileType; // Type de fichier
+        address uploader; // Adresse de l'uploader
+        string fileName; // Ajout du nom du fichier
+    }
+
+    enum FileType {
+        LEASE,
+        PHOTOS,
+        ENTRY_INVENTORY,
+        EXIT_INVENTORY
+    }
+
     enum PropertyStatus {
         NOT_RENTED,
         RENTED,
@@ -45,6 +61,10 @@ contract SmartDeposit is Ownable {
     mapping(uint256 => Deposit) private deposits;
     mapping(address => uint256[]) private landlordProperties;
     mapping(address => uint256[]) private tenantDeposits;
+
+    // Mapping pour stocker les références aux fichiers
+    mapping(uint256 => mapping(FileType => FileReference[]))
+        private propertyFiles;
 
     // Events
     event PropertyCreated(
@@ -70,6 +90,14 @@ contract SmartDeposit is Ownable {
     event PropertyStatusChanged(
         uint256 indexed propertyId,
         PropertyStatus status
+    );
+
+    // Événement pour les fichiers
+    event FileAdded(
+        uint256 indexed propertyId,
+        FileType indexed fileType,
+        string cid,
+        address indexed uploader
     );
 
     constructor() Ownable(msg.sender) {}
@@ -298,6 +326,26 @@ contract SmartDeposit is Ownable {
         emit PropertyStatusChanged(_depositId, property.status);
     }
 
+    // Fonction pour ajouter un fichier (bail ou photos)
+    function addFile(
+        uint256 _propertyId,
+        string memory _cid,
+        FileType _fileType,
+        string memory _fileName
+    ) external propertyExists(_propertyId) onlyLandlord(_propertyId) {
+        FileReference memory newFile = FileReference({
+            cid: _cid,
+            uploadTimestamp: block.timestamp,
+            fileType: _fileType,
+            uploader: msg.sender,
+            fileName: _fileName
+        });
+
+        propertyFiles[_propertyId][_fileType].push(newFile);
+
+        emit FileAdded(_propertyId, _fileType, _cid, msg.sender);
+    }
+
     // View functions
     function getLandlordProperties(
         address _landlord
@@ -375,5 +423,37 @@ contract SmartDeposit is Ownable {
             deposit.timestamp,
             deposit.status
         );
+    }
+
+    // Fonction pour récupérer tous les fichiers d'une propriété
+    function getPropertyFiles(
+        uint256 _propertyId
+    )
+        external
+        view
+        propertyExists(_propertyId)
+        returns (FileReference[] memory)
+    {
+        // Créer un tableau temporaire pour stocker tous les fichiers
+        uint256 totalFiles = 0;
+        for (uint256 i = 0; i < 4; i++) {
+            totalFiles += propertyFiles[_propertyId][FileType(i)].length;
+        }
+
+        FileReference[] memory allFiles = new FileReference[](totalFiles);
+        uint256 currentIndex = 0;
+
+        // Copier tous les fichiers dans le tableau
+        for (uint256 i = 0; i < 4; i++) {
+            FileReference[] storage filesOfType = propertyFiles[_propertyId][
+                FileType(i)
+            ];
+            for (uint256 j = 0; j < filesOfType.length; j++) {
+                allFiles[currentIndex] = filesOfType[j];
+                currentIndex++;
+            }
+        }
+
+        return allFiles;
     }
 }

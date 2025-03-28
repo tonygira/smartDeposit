@@ -14,6 +14,17 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import { FileUpload } from '@/components/file-upload';
+import { uploadToPinata } from '@/lib/ipfs-service'
+
+// Ajout des types pour les fichiers
+type FileInfo = {
+  cid: string;
+  fileType: number;
+  uploadTimestamp: bigint;
+  uploader: string;
+  fileName: string;
+};
 
 export default function PropertyDetails() {
   const params = useParams()
@@ -25,7 +36,7 @@ export default function PropertyDetails() {
 
   // Transaction status
   const [transactionStatus, setTransactionStatus] = useState<"idle" | "pending" | "confirming" | "success" | "error">("idle")
-  const [txType, setTxType] = useState<"delete" | "deposit" | "refund" | "dispute" | "resolve" | "request" | null>(null)
+  const [txType, setTxType] = useState<"delete" | "deposit" | "refund" | "dispute" | "resolve" | "request" | "upload" | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<string | null>(null)
 
@@ -116,6 +127,13 @@ export default function PropertyDetails() {
 
   const { isLoading: isResolveConfirming, isSuccess: isResolveConfirmed, error: resolveError } = useWaitForTransactionReceipt({
     hash: resolveHash,
+  })
+
+  // File upload
+  const { data: uploadHash, isPending: isUploadPending, writeContract } = useWriteContract()
+
+  const { isLoading: isUploadConfirming, isSuccess: isUploadConfirmed, error: uploadError } = useWaitForTransactionReceipt({
+    hash: uploadHash,
   })
 
   // Update transaction status based on contract states
@@ -222,6 +240,23 @@ export default function PropertyDetails() {
         setTransactionStatus("error");
         setError("La transaction de demande de caution a échoué. Veuillez réessayer.");
       }
+    } else if (txType === "upload") {
+      if (isUploadPending) {
+        setTransactionStatus("pending");
+      } else if (isUploadConfirming) {
+        setTransactionStatus("confirming");
+      } else if (isUploadConfirmed) {
+        setTransactionStatus("success");
+      }
+
+      if (uploadHash) {
+        setTxHash(uploadHash);
+      }
+
+      if (uploadError) {
+        setTransactionStatus("error");
+        setError("La transaction d'upload a échoué. Veuillez réessayer.");
+      }
     }
   }, [
     txType,
@@ -231,6 +266,7 @@ export default function PropertyDetails() {
     isDisputePending, isDisputeConfirming, isDisputeConfirmed, disputeHash, disputeError,
     isResolvePending, isResolveConfirming, isResolveConfirmed, resolveHash, resolveError,
     isRequestPending, isRequestConfirming, isRequestConfirmed, requestHash, requestError,
+    isUploadPending, isUploadConfirming, isUploadConfirmed, uploadHash, uploadError,
   ]);
 
   // Reset transaction tracking
@@ -298,19 +334,75 @@ export default function PropertyDetails() {
     router.push(`/properties/${propertyId}/qr-code`);
   }
 
-  const handleUploadLease = () => {
-    toast({
-      title: "Information",
-      description: "La fonctionnalité de dépôt de bail sera bientôt disponible.",
-    });
-  }
+  const handleUploadLease = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      try {
+        const cid = await uploadToPinata(file, { 
+          propertyId: propertyId.toString(), 
+          fileType: 'LEASE' 
+        });
+        handleUploadSuccess(cid, 'LEASE', file.name);
+      } catch (error) {
+        console.error("Erreur lors de l'upload du bail:", error);
+        toast({
+          title: "Erreur",
+          description: "Une erreur s'est produite lors de l'upload du bail.",
+          variant: "destructive"
+        });
+      }
+    }
+  };
 
-  const handleUploadPhotos = () => {
-    toast({
-      title: "Information",
-      description: "La fonctionnalité de dépôt de photos sera bientôt disponible.",
-    });
-  }
+  const handleUploadPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      try {
+        const cid = await uploadToPinata(file, { 
+          propertyId: propertyId.toString(), 
+          fileType: 'PHOTOS' 
+        });
+        handleUploadSuccess(cid, 'PHOTOS', file.name);
+      } catch (error) {
+        console.error("Erreur lors de l'upload des photos:", error);
+        toast({
+          title: "Erreur",
+          description: "Une erreur s'est produite lors de l'upload des photos.",
+          variant: "destructive"
+        });
+      }
+    }
+  };
+
+  const handleUploadSuccess = async (cid: string, fileType: 'LEASE' | 'PHOTOS', fileName: string) => {
+    console.log(`CID reçu: ${cid}, Type: ${fileType}, Nom: ${fileName}`);
+    
+    if (!property) return;
+    
+    try {
+      setTransactionStatus("pending");
+      setTxType("upload");
+      setError(null);
+      
+      const fileTypeEnum = fileType === 'LEASE' ? 0 : 1; // 0 pour LEASE, 1 pour PHOTOS
+      
+      writeContract({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        abi: SMART_DEPOSIT_ABI,
+        functionName: "addFile",
+        args: [BigInt(propertyId), cid, fileTypeEnum, fileName],
+      });
+      
+      toast({
+        title: "Upload réussi",
+        description: `Le fichier a été uploadé avec succès! CID: ${cid.slice(0, 10)}...`,
+      });
+    } catch (error) {
+      console.error(`Erreur lors de l'ajout du fichier au contrat:`, error);
+      setTransactionStatus("error");
+      setError("Une erreur s'est produite lors de l'enregistrement du fichier.");
+    }
+  };
 
   // Récupération de l'id de deposit
   const { data: depositId } = useReadContract({
@@ -403,8 +495,74 @@ export default function PropertyDetails() {
         return "Litige résolu avec succès!";
       case "request":
         return "Demande de caution envoyée avec succès!";
+      case "upload":
+        return "Fichier enregistré avec succès!";
       default:
         return "Transaction effectuée avec succès!";
+    }
+  };
+
+  const [files, setFiles] = useState<FileInfo[]>([]);
+
+  // Récupération des fichiers
+  const { data: propertyFiles, refetch: refetchFiles } = useReadContract({
+    address: CONTRACT_ADDRESS as `0x${string}`,
+    abi: SMART_DEPOSIT_ABI,
+    functionName: "getPropertyFiles",
+    args: [BigInt(propertyId)],
+  });
+
+  // Mise à jour des fichiers quand les données sont reçues
+  useEffect(() => {
+    if (propertyFiles) {
+      console.log("Fichiers reçus:", propertyFiles);
+      setFiles(propertyFiles as FileInfo[]);
+    }
+  }, [propertyFiles]);
+
+  // Rafraîchir les fichiers après un upload réussi
+  useEffect(() => {
+    if (transactionStatus === "success" && txType === "upload") {
+      refetchFiles();
+    }
+  }, [transactionStatus, txType, refetchFiles]);
+
+  // Fonction pour obtenir le type de fichier en texte
+  const getFileTypeText = (fileType: number) => {
+    switch (fileType) {
+      case 0:
+        return "Bail";
+      case 1:
+        return "Photos";
+      case 2:
+        return "État des lieux d'entrée";
+      case 3:
+        return "État des lieux de sortie";
+      default:
+        return "Document";
+    }
+  };
+
+  // Fonction pour télécharger un fichier
+  const handleDownloadFile = async (cid: string, fileName: string) => {
+    try {
+      const response = await fetch(`https://gateway.pinata.cloud/ipfs/${cid}`);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Erreur lors du téléchargement:", error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de télécharger le fichier.",
+        variant: "destructive"
+      });
     }
   };
 
@@ -519,18 +677,14 @@ export default function PropertyDetails() {
             <CardFooter className="flex justify-end gap-2">
               {transactionStatus === "success" && (
                 <>
-                  <Button onClick={() => router.push(
-                    txType === "deposit"
-                      ? "/deposits"
-                      : isLandlord
-                        ? "/dashboard"
-                        : "/deposits"
-                  )} variant="default">
-                    {txType === "deposit"
-                      ? "Voir mes cautions"
-                      : isLandlord
-                        ? "Retour au tableau de bord"
-                        : "Voir mes cautions"}
+                  <Button onClick={() => {
+                    if (showDepositRequestForm) {
+                      setShowDepositRequestForm(false);
+                    } else {
+                      resetTransaction();
+                    }
+                  }} variant="default">
+                    Retour sur le bien
                   </Button>
                   <Button onClick={resetTransaction} variant="outline">
                     Continuer
@@ -587,27 +741,49 @@ export default function PropertyDetails() {
 
                   <div className="flex flex-col gap-4">
                     <div className="flex flex-col md:flex-row gap-4 mb-4">
-                      <Button
-                        variant="outline"
-                        className="flex items-center"
-                        onClick={handleUploadLease}
-                      >
-                        <Upload className="mr-2 h-4 w-4" />
-                        Déposer le bail
-                      </Button>
+                      <div>
+                        <input
+                          type="file"
+                          onChange={handleUploadLease}
+                          style={{ display: 'none' }}
+                          id="upload-lease"
+                        />
+                        <label htmlFor="upload-lease">
+                          <Button
+                            variant="outline"
+                            className="flex items-center"
+                            type="button"
+                            onClick={() => document.getElementById('upload-lease')?.click()}
+                          >
+                            <Upload className="mr-2 h-4 w-4" />
+                            Déposer le bail
+                          </Button>
+                        </label>
+                      </div>
 
-                      <Button
-                        variant="outline"
-                        className="flex items-center"
-                        onClick={handleUploadPhotos}
-                      >
-                        <Upload className="mr-2 h-4 w-4" />
-                        Déposer photos
-                      </Button>
+                      <div>
+                        <input
+                          type="file"
+                          onChange={handleUploadPhotos}
+                          style={{ display: 'none' }}
+                          id="upload-photos"
+                        />
+                        <label htmlFor="upload-photos">
+                          <Button
+                            variant="outline"
+                            className="flex items-center"
+                            type="button"
+                            onClick={() => document.getElementById('upload-photos')?.click()}
+                          >
+                            <Upload className="mr-2 h-4 w-4" />
+                            Déposer photos
+                          </Button>
+                        </label>
+                      </div>
                     </div>
 
                     <div className="mb-2">
-                      <Label htmlFor="depositAmount">Montant de la caution (€)</Label>
+                      <Label htmlFor="depositAmount">Montant de la caution (ETH)</Label>
                       <Input
                         id="depositAmount"
                         type="number"
@@ -814,6 +990,56 @@ export default function PropertyDetails() {
             </Card>
           </div>
         )}
+
+        {/* Section des fichiers uploadés */}
+        <Card className="mt-8">
+          <CardHeader>
+            <CardTitle>Documents associés</CardTitle>
+            <CardDescription>Liste des documents uploadés pour ce bien</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {files.length === 0 ? (
+              <p className="text-gray-500">Aucun document n'a encore été uploadé.</p>
+            ) : (
+              <div className="grid gap-4">
+                {files.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className="p-2 bg-gray-100 rounded-full">
+                        <Upload className="h-5 w-5 text-gray-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{getFileTypeText(Number(file.fileType))}</p>
+                        <p className="text-sm text-gray-500">
+                          {file.fileName}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          Uploadé le {file.uploadTimestamp ? new Date(Number(file.uploadTimestamp) * 1000).toLocaleDateString('fr-FR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          }) : 'Date inconnue'}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDownloadFile(file.cid, file.fileName)}
+                    >
+                      Télécharger
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </main>
     </div>
   )
