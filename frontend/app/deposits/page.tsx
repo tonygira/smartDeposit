@@ -160,7 +160,7 @@ export default function Deposits() {
     switch (statusCode) {
       case DepositStatus.PENDING:
         return "bg-yellow-100 text-yellow-800"
-      case DepositStatus.ACTIVE:
+      case DepositStatus.PAID:
         return "bg-blue-100 text-blue-800"
       case DepositStatus.DISPUTED:
         return "bg-red-100 text-red-800"
@@ -249,7 +249,7 @@ export default function Deposits() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
-                      {deposit.statusCode === DepositStatus.ACTIVE ? (
+                      {deposit.statusCode === DepositStatus.PAID ? (
                         <p>
                           <strong>Montant versé:</strong> {deposit.amount} ETH
                           {deposit.paymentDate > 0 && (

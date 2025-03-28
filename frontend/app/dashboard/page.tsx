@@ -6,10 +6,22 @@ import { formatEther } from "viem"
 import { Header } from "@/components/header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getPropertyStatusText } from "@/lib/contract"
+import { Badge } from "@/components/ui/badge"
+import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getPropertyStatusText, getDepositStatusText, DepositStatus } from "@/lib/contract"
 import Link from "next/link"
-import { Home, Key, AlertTriangle, CheckCircle } from "lucide-react"
+import { Home, Key, AlertTriangle, CheckCircle, FileText, File, Calendar, Wallet, Ban } from "lucide-react"
 import { useRouter } from "next/navigation"
+
+const formatDate = (timestamp: number) => {
+  if (!timestamp) return "Date inconnue";
+  return new Date(timestamp * 1000).toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
 
 export default function Dashboard() {
   const { address, isConnected } = useAccount()
@@ -22,7 +34,6 @@ export default function Dashboard() {
     abi: SMART_DEPOSIT_ABI,
     functionName: "getLandlordProperties",
     args: [address],
-    enabled: isConnected && !!address,
   })
 
   // Rafraîchir les données lorsque l'adresse change
@@ -41,17 +52,93 @@ export default function Dashboard() {
       functionName: "getPropertyDetails",
       args: [id],
     })),
-    enabled: isConnected && !!propertyIds && propertyIds.length > 0,
   })
 
-  // Log des données des propriétés
+  // Fetch deposit IDs for each property
+  const { data: depositIdsData } = useReadContracts({
+    contracts: ((propertyIds as bigint[]) || []).map((id) => ({
+      address: CONTRACT_ADDRESS as `0x${string}`,
+      abi: SMART_DEPOSIT_ABI as any,
+      functionName: "getDepositIdFromProperty",
+      args: [id],
+    })),
+  })
+
+  // Fetch file counts for each property
+  const { data: propertiesFilesData } = useReadContracts({
+    contracts: ((propertyIds as bigint[]) || []).map((id) => ({
+      address: CONTRACT_ADDRESS as `0x${string}`,
+      abi: SMART_DEPOSIT_ABI as any,
+      functionName: "getPropertyFiles",
+      args: [id],
+    })),
+  })
+
+  // Fetch deposit details for each property with a deposit
+  const [depositDetails, setDepositDetails] = useState<Record<number, any>>({})
+
+  // Définir les contrats pour les détails des dépôts
+  const depositDetailsContracts = depositIdsData?.filter(
+    (result) => result.status === "success" && result.result && Number(result.result) > 0
+  ).map((result) => ({
+    address: CONTRACT_ADDRESS as `0x${string}`,
+    abi: SMART_DEPOSIT_ABI as any,
+    functionName: "getDepositDetails",
+    args: [result.result],
+  })) || []
+
+  // Hook pour récupérer les détails des dépôts
+  const { data: depositDetailsData, refetch: refetchDepositDetails } = useReadContracts({
+    contracts: depositDetailsContracts
+  })
+
+  // Traitement des détails des dépôts
   useEffect(() => {
-    console.log("Données brutes des propriétés:", propertiesData);
-  }, [propertiesData]);
+    if (depositDetailsData && depositDetailsData.length > 0) {
+      const details: Record<number, any> = {}
+      depositDetailsData.forEach((result) => {
+        if (result.status === "success" && result.result) {
+          const [id, propertyId, tenant, amount, finalAmount, creationDate, paymentDate, refundDate, status, depositCode] = result.result as [
+            bigint,
+            bigint,
+            string,
+            bigint,
+            bigint,
+            bigint,
+            bigint,
+            bigint,
+            number,
+            string
+          ]
+          details[Number(propertyId)] = {
+            id: Number(id),
+            propertyId: Number(propertyId),
+            tenant,
+            amount: formatEther(amount),
+            finalAmount: formatEther(finalAmount),
+            creationDate: Number(creationDate),
+            paymentDate: Number(paymentDate),
+            refundDate: Number(refundDate),
+            status: Number(status),
+            statusText: getDepositStatusText(Number(status)),
+            depositCode
+          }
+        }
+      })
+      setDepositDetails(details)
+    }
+  }, [depositDetailsData])
+
+  // Rafraîchir les détails des dépôts lorsque les IDs changent
+  useEffect(() => {
+    if (depositIdsData) {
+      refetchDepositDetails()
+    }
+  }, [depositIdsData, refetchDepositDetails])
 
   // Process property data
   useEffect(() => {
-    if (propertiesData) {
+    if (propertiesData && propertiesFilesData) {
       const properties = propertiesData
         .map((result, index) => {
           if (result.status === "success" && result.result) {
@@ -63,13 +150,22 @@ export default function Dashboard() {
               bigint,
               number
             ]
+
+            // Compter les fichiers pour cette propriété si disponibles
+            let filesCount = 0
+            if (propertiesFilesData[index]?.status === "success" && propertiesFilesData[index]?.result) {
+              filesCount = (propertiesFilesData[index]?.result as any[]).length
+            }
+
             return {
               id: Number(id),
               landlord,
               name,
               location,
               depositAmount: formatEther(depositAmount),
-              status: getPropertyStatusText(status)
+              status: getPropertyStatusText(status),
+              statusCode: Number(status),
+              filesCount
             }
           }
           return null
@@ -81,7 +177,7 @@ export default function Dashboard() {
     else {
       setLandlordProperties([])
     }
-  }, [propertiesData])
+  }, [propertiesData, propertiesFilesData])
 
   if (!isConnected) {
     return (
@@ -95,6 +191,25 @@ export default function Dashboard() {
         </main>
       </div>
     )
+  }
+
+  const getDepositStatusBadge = (status: number) => {
+    switch (status) {
+      case DepositStatus.PENDING:
+        return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">En attente</Badge>
+      case DepositStatus.PAID:
+        return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Payée</Badge>
+      case DepositStatus.DISPUTED:
+        return <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">En litige</Badge>
+      case DepositStatus.REFUNDED:
+        return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Remboursée</Badge>
+      case DepositStatus.PARTIALLY_REFUNDED:
+        return <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">Partiellement remboursée</Badge>
+      case DepositStatus.RETAINED:
+        return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">Conservée</Badge>
+      default:
+        return <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">Inconnue</Badge>
+    }
   }
 
   return (
@@ -119,7 +234,7 @@ export default function Dashboard() {
               <Key className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{landlordProperties.filter((p) => p.status === "Non loué").length}</div>
+              <div className="text-2xl font-bold">{landlordProperties.filter((p) => p.statusCode === 0).length}</div>
             </CardContent>
           </Card>
           <Card>
@@ -128,7 +243,7 @@ export default function Dashboard() {
               <CheckCircle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{landlordProperties.filter((p) => p.status === "Loué").length}</div>
+              <div className="text-2xl font-bold">{landlordProperties.filter((p) => p.statusCode === 1).length}</div>
             </CardContent>
           </Card>
           <Card>
@@ -137,7 +252,7 @@ export default function Dashboard() {
               <AlertTriangle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{landlordProperties.filter((p) => p.status === "En litige").length}</div>
+              <div className="text-2xl font-bold">{landlordProperties.filter((p) => p.statusCode === 2).length}</div>
             </CardContent>
           </Card>
         </div>
@@ -154,45 +269,98 @@ export default function Dashboard() {
           <CardContent>
             {landlordProperties.length > 0 ? (
               <div className="space-y-4">
-                {landlordProperties.map((property) => (
-                  <div key={property.id} className="border rounded-lg p-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <h3 className="font-semibold text-lg">{property.name}</h3>
-                      <Link href={`/properties/${property.id}`}>
-                        <Button variant="outline" size="sm">
-                          Actions
-                        </Button>
-                      </Link>
+                {landlordProperties.map((property) => {
+                  const deposit = depositDetails[property.id];
+                  return (
+                    <div key={property.id} className="border rounded-lg p-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <h3 className="font-semibold text-lg">{property.name}</h3>
+                        <Link href={`/properties/${property.id}`}>
+                          <Button variant="outline" size="sm">
+                            Actions
+                          </Button>
+                        </Link>
+                      </div>
+                      <p className="text-sm text-gray-500">{property.location}</p>
+
+                      <div className="grid md:grid-cols-2 gap-4 mt-3">
+                        <div>
+                          <p className="flex items-center text-sm font-medium mb-1 text-gray-700">
+                            <Home className="h-4 w-4 mr-1 text-gray-600" />
+                            Détails du bien
+                          </p>
+                          <p className="mt-1 ml-5 text-sm">
+                            Caution: {property.depositAmount} ETH
+                          </p>
+                          <p className="mt-1 ml-5 flex items-center text-sm">
+                            Statut:{" "}
+                            <span
+                              className={`ml-1 font-medium ${property.statusCode === 2
+                                ? "text-yellow-500"
+                                : property.statusCode === 1
+                                  ? "text-green-500"
+                                  : "text-blue-500"
+                                }`}
+                            >
+                              {property.status}
+                            </span>
+                          </p>
+                          <p className="mt-1 ml-5 flex items-center text-sm">
+                            {property.filesCount > 0 ? (
+                              <div className="flex items-center">
+                                <FileText className="h-4 w-4 mr-1 text-green-500" />
+                                <span className="text-green-700">{property.filesCount} document{property.filesCount > 1 ? 's' : ''} ajouté{property.filesCount > 1 ? 's' : ''}</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center">
+                                <File className="h-4 w-4 mr-1 text-gray-400" />
+                                <span className="text-gray-500">Aucun document</span>
+                              </div>
+                            )}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="flex items-center text-sm font-medium mb-1 text-gray-700">
+                            <Wallet className="h-4 w-4 mr-1 text-gray-600" />
+                            État de la caution
+                          </p>
+                          {deposit ? (
+                            <div className="ml-5">
+                              <div className="flex items-center mt-1 text-sm">
+                                {getDepositStatusBadge(deposit.status)}
+                              </div>
+                              <div className="flex items-start mt-1.5 text-sm">
+                                <Calendar className="h-3.5 w-3.5 mr-1 text-gray-500 mt-0.5" />
+                                <div className="flex flex-col">
+                                  <span className="text-xs text-gray-600">Création: {formatDate(deposit.creationDate)}</span>
+                                  {deposit.status >= DepositStatus.PAID && deposit.paymentDate > 0 && (
+                                    <span className="text-xs text-gray-600">Paiement: {formatDate(deposit.paymentDate)}</span>
+                                  )}
+                                  {(deposit.status === DepositStatus.REFUNDED ||
+                                    deposit.status === DepositStatus.PARTIALLY_REFUNDED ||
+                                    deposit.status === DepositStatus.RETAINED) &&
+                                    deposit.refundDate > 0 && (
+                                      <span className="text-xs text-gray-600">Remboursement: {formatDate(deposit.refundDate)}</span>
+                                    )}
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center ml-5 mt-1 text-sm">
+                              <Ban className="h-4 w-4 mr-1 text-gray-400" />
+                              <span className="text-gray-500">Caution non créée</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-sm text-gray-500">{property.location}</p>
-                    <p className="mt-2">Caution: {property.depositAmount} ETH</p>
-                    <p className="mt-1">
-                      Statut:{" "}
-                      <span
-                        className={`font-medium ${
-                          property.status === "En litige"
-                            ? "text-yellow-500"
-                            : property.status === "Loué"
-                            ? "text-green-500"
-                            : "text-blue-500"
-                        }`}
-                      >
-                        {property.status}
-                      </span>
-                    </p>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
               <div className="text-center py-8">
-                <p className="text-gray-500 text-lg">Vous n'avez pas encore créé de bien</p>
-                <Button
-                  onClick={() => router.push("/properties/create")}
-                  className="mt-4"
-                  style={{ backgroundColor: "#7759F9" }}
-                >
-                  Créer un bien
-                </Button>
+                <p className="text-gray-500 text-lg">Vous n'avez pas encore créé de bien.</p>
               </div>
             )}
           </CardContent>

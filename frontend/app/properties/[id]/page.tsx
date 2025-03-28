@@ -1132,7 +1132,7 @@ export default function PropertyDetails() {
             <CardContent>
               {!depositDetails || depositDetails.status !== DepositStatus.PENDING ? (
                 <div>
-                  {depositDetails && depositDetails.status === DepositStatus.ACTIVE ? (
+                  {depositDetails && depositDetails.status === DepositStatus.PAID ? (
                     <div className="p-4 bg-green-50 border border-green-200 rounded-md">
                       <p className="text-green-700 flex items-center">
                         <CheckCircle className="mr-2 h-5 w-5" />

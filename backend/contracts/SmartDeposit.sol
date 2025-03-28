@@ -22,7 +22,7 @@ contract SmartDeposit is Ownable {
         uint256 amount;
         uint256 finalAmount;
         uint256 creationDate; // Date de création (PENDING)
-        uint256 paymentDate; // Date de paiement (ACTIVE)
+        uint256 paymentDate; // Date de paiement (PAID)
         uint256 refundDate; // Date de remboursement (REFUNDED, PARTIALLY_REFUNDED, RETAINED)
         DepositStatus status;
     }
@@ -50,7 +50,7 @@ contract SmartDeposit is Ownable {
     }
     enum DepositStatus {
         PENDING,
-        ACTIVE,
+        PAID,
         DISPUTED,
         RETAINED,
         PARTIALLY_REFUNDED,
@@ -270,7 +270,7 @@ contract SmartDeposit is Ownable {
         require(deposit.tenant == address(0), "Deposit already has tenant");
 
         deposit.tenant = msg.sender;
-        deposit.status = DepositStatus.ACTIVE;
+        deposit.status = DepositStatus.PAID;
         deposit.paymentDate = block.timestamp; // Enregistrement de la date de paiement
         properties[deposit.propertyId].status = PropertyStatus.RENTED;
         tenantDeposits[msg.sender].push(_depositId);
@@ -287,7 +287,7 @@ contract SmartDeposit is Ownable {
         onlyLandlord(deposits[_depositId].propertyId)
     {
         Deposit storage deposit = deposits[_depositId];
-        require(deposit.status == DepositStatus.ACTIVE, "Deposit not active");
+        require(deposit.status == DepositStatus.PAID, "Deposit not paid");
 
         Property storage property = properties[deposit.propertyId];
         require(
@@ -367,7 +367,7 @@ contract SmartDeposit is Ownable {
         onlyLandlord(deposits[_depositId].propertyId)
     {
         Deposit storage deposit = deposits[_depositId];
-        require(deposit.status == DepositStatus.ACTIVE, "Deposit not active");
+        require(deposit.status == DepositStatus.PAID, "Deposit not paid");
 
         deposit.status = DepositStatus.REFUNDED;
         deposit.finalAmount = deposit.amount;

@@ -25,21 +25,21 @@ export const getPropertyStatusText = (status: number): string => {
 
 export enum DepositStatus {
   PENDING = 0,
-  ACTIVE = 1,
+  PAID = 1,
   DISPUTED = 2,
   RETAINED = 3,
   PARTIALLY_REFUNDED = 4,
   REFUNDED = 5,
 }
 
-export function getDepositStatusText(status: number) {
+export function getDepositStatusText(status: number, lang: string = 'fr') {
   console.log("getDepositStatusText reçoit:", status, "de type", typeof status);
-  
+
   switch (status) {
     case DepositStatus.PENDING:
       return "En attente"
-    case DepositStatus.ACTIVE:
-      return "Active"
+    case DepositStatus.PAID:
+      return "Payée"
     case DepositStatus.DISPUTED:
       return "En litige"
     case DepositStatus.REFUNDED:
