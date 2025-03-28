@@ -9,13 +9,15 @@ import { Button } from "@/components/ui/button"
 import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getPropertyStatusText } from "@/lib/contract"
 import Link from "next/link"
 import { Home, Key, AlertTriangle, CheckCircle } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 export default function Dashboard() {
   const { address, isConnected } = useAccount()
   const [landlordProperties, setLandlordProperties] = useState<any[]>([])
+  const router = useRouter()
 
   // Get property IDs
-  const { data: propertyIds } = useReadContract({
+  const { data: propertyIds, refetch: refetchPropertyIds } = useReadContract({
     address: CONTRACT_ADDRESS as `0x${string}`,
     abi: SMART_DEPOSIT_ABI,
     functionName: "getLandlordProperties",
@@ -23,6 +25,13 @@ export default function Dashboard() {
     enabled: isConnected && !!address,
   })
 
+  // Rafraîchir les données lorsque l'adresse change
+  useEffect(() => {
+    if (address) {
+      // Rafraîchir la liste des propriétés
+      refetchPropertyIds();
+    }
+  }, [address, refetchPropertyIds]);
 
   // Fetch property details
   const { data: propertiesData } = useReadContracts({
@@ -68,6 +77,9 @@ export default function Dashboard() {
         .filter(Boolean)
 
       setLandlordProperties(properties)
+    }
+    else {
+      setLandlordProperties([])
     }
   }, [propertiesData])
 
@@ -140,7 +152,7 @@ export default function Dashboard() {
             </div>
           </CardHeader>
           <CardContent>
-            {landlordProperties.length > 0 && (
+            {landlordProperties.length > 0 ? (
               <div className="space-y-4">
                 {landlordProperties.map((property) => (
                   <div key={property.id} className="border rounded-lg p-4">
@@ -170,7 +182,19 @@ export default function Dashboard() {
                     </p>
                   </div>
                 ))}
-              </div>)}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-500 text-lg">Vous n'avez pas encore créé de bien</p>
+                <Button
+                  onClick={() => router.push("/properties/create")}
+                  className="mt-4"
+                  style={{ backgroundColor: "#7759F9" }}
+                >
+                  Créer un bien
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </main>

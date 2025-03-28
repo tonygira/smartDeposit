@@ -20,13 +20,25 @@ export default function Deposits() {
   const router = useRouter()
 
   // Get deposit IDs
-  const { data: depositIds } = useReadContract({
+  const { data: depositIds, refetch: refetchDepositIds } = useReadContract({
     address: CONTRACT_ADDRESS as `0x${string}`,
     abi: SMART_DEPOSIT_ABI,
     functionName: "getTenantDeposits",
     args: [address],
     enabled: isConnected && !!address,
   })
+
+  // Rafraîchir les données lorsque l'adresse change
+  useEffect(() => {
+    if (address) {
+      // Rafraîchir la liste des dépôts
+      refetchDepositIds();
+      // Réinitialiser les états
+      setDeposits([]);
+      setProperties({});
+      setPropertyIds([]);
+    }
+  }, [address, refetchDepositIds]);
 
   // Fetch deposit details
   const { data: depositsData } = useReadContracts({
@@ -48,14 +60,17 @@ export default function Deposits() {
             const resultArray = result.result as any[];
             
             try {
-              const [id, propertyId, tenant, amount, finalAmount, timestamp, status] = resultArray as [
+              const [id, propertyId, tenant, amount, finalAmount, creationDate, paymentDate, refundDate, status, depositCode] = resultArray as [
                 bigint,
                 bigint,
                 string,
                 bigint,
                 bigint,
                 bigint,
+                bigint,
+                bigint,
                 number,
+                string
               ]
 
               return {
@@ -64,9 +79,12 @@ export default function Deposits() {
                 tenant,
                 amount: formatEther(amount),
                 finalAmount: formatEther(finalAmount),
-                timestamp: new Date(Number(timestamp) * 1000).toLocaleDateString(),
+                creationDate: Number(creationDate),
+                paymentDate: Number(paymentDate),
+                refundDate: Number(refundDate),
                 status: getDepositStatusText(Number(status)),
                 statusCode: Number(status),
+                depositCode
               }
             } catch (error) {
               console.error(`Erreur lors du traitement de la caution #${index}:`, error);
@@ -161,6 +179,18 @@ export default function Deposits() {
     router.push('/deposits/code');
   }
 
+  // Fonction pour formater une date
+  const formatDate = (timestamp: number | null) => {
+    if (!timestamp) return "Date inconnue";
+    return new Date(timestamp * 1000).toLocaleDateString('fr-FR', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric', 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  };
+
   if (!isConnected) {
     return (
       <div className="flex min-h-screen flex-col">
@@ -196,6 +226,7 @@ export default function Deposits() {
           <div className="flex flex-col gap-6">
             {deposits.map((deposit) => {
               const property = properties[deposit.propertyId];
+              
               return (
                 <Card key={deposit.id} className="w-full">
                   <CardHeader>
@@ -218,27 +249,50 @@ export default function Deposits() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
-                      <p>
-                        <strong>Montant:</strong> {deposit.amount} ETH
-                      </p>
+                      {deposit.statusCode === DepositStatus.ACTIVE ? (
+                        <p>
+                          <strong>Montant versé:</strong> {deposit.amount} ETH
+                          {deposit.paymentDate > 0 && (
+                            <span className="ml-2 text-sm text-gray-600">
+                              (le {formatDate(deposit.paymentDate)})
+                            </span>
+                          )}
+                        </p>
+                      ) : (
+                        <p>
+                          <strong>Montant:</strong> {deposit.amount} ETH
+                        </p>
+                      )}
                       {(deposit.statusCode === DepositStatus.REFUNDED || 
                         deposit.statusCode === DepositStatus.PARTIALLY_REFUNDED || 
                         deposit.statusCode === DepositStatus.RETAINED) && (
-                        <p>
-                          <strong>Montant remboursé:</strong> {deposit.finalAmount} ETH 
-                          {deposit.statusCode !== DepositStatus.RETAINED && (
-                            <span className="ml-2 text-sm">
-                              ({(Number(deposit.finalAmount) / Number(deposit.amount) * 100).toFixed(1)}% de la caution)
-                            </span>
+                        <>
+                          <p>
+                            <strong>Montant remboursé:</strong> {deposit.finalAmount} ETH 
+                            {deposit.statusCode !== DepositStatus.RETAINED && (
+                              <span className="ml-2 text-sm">
+                                ({(Number(deposit.finalAmount) / Number(deposit.amount) * 100).toFixed(1)}% de la caution)
+                              </span>
+                            )}
+                            {deposit.statusCode === DepositStatus.RETAINED && (
+                              <span className="ml-2 text-sm">(0% de la caution)</span>
+                            )}
+                          </p>
+                          {deposit.refundDate > 0 && (
+                            <p>
+                              <strong>Date de remboursement:</strong> {formatDate(deposit.refundDate)}
+                            </p>
                           )}
-                          {deposit.statusCode === DepositStatus.RETAINED && (
-                            <span className="ml-2 text-sm">(0% de la caution)</span>
-                          )}
-                        </p>
+                        </>
                       )}
                       <p>
-                        <strong>Date:</strong> {deposit.timestamp}
+                        <strong>Date de création:</strong> {formatDate(deposit.creationDate)}
                       </p>
+                      {deposit.statusCode !== DepositStatus.PENDING && deposit.paymentDate > 0 && (
+                        <p>
+                          <strong>Date de versement:</strong> {formatDate(deposit.paymentDate)}
+                        </p>
+                      )}
                       {property && (
                         <p>
                           <strong>Propriétaire:</strong> {property.landlord.slice(0, 6)}...{property.landlord.slice(-4)}

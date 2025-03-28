@@ -17,10 +17,13 @@ contract SmartDeposit is Ownable {
     struct Deposit {
         uint256 id;
         uint256 propertyId;
+        string depositCode;
         address tenant;
         uint256 amount;
         uint256 finalAmount;
-        uint256 timestamp;
+        uint256 creationDate; // Date de création (PENDING)
+        uint256 paymentDate; // Date de paiement (ACTIVE)
+        uint256 refundDate; // Date de remboursement (REFUNDED, PARTIALLY_REFUNDED, RETAINED)
         DepositStatus status;
     }
 
@@ -194,14 +197,35 @@ contract SmartDeposit is Ownable {
         emit PropertyStatusChanged(_propertyId, PropertyStatus.NOT_RENTED);
     }
 
-    function makeDeposit(
-        uint256 _propertyId
-    ) external payable propertyExists(_propertyId) returns (uint256) {
+    // Événements pour le suivi des dépôts
+    event DepositCreated(
+        uint256 indexed depositId,
+        uint256 indexed propertyId,
+        uint256 amount,
+        string depositCode
+    );
+    event DepositPaid(
+        uint256 indexed depositId,
+        address indexed tenant,
+        uint256 amount
+    );
+
+    function createDeposit(
+        uint256 _propertyId,
+        string memory _depositCode
+    )
+        external
+        propertyExists(_propertyId)
+        onlyLandlord(_propertyId)
+        returns (uint256)
+    {
         Property storage property = properties[_propertyId];
         require(
-            msg.value == property.depositAmount,
-            "Incorrect deposit amount"
+            property.status == PropertyStatus.NOT_RENTED,
+            "Property already rented"
         );
+        require(property.depositId == 0, "Deposit already exists");
+        require(bytes(_depositCode).length > 0, "Invalid deposit code");
 
         depositCounter++;
         uint256 depositId = depositCounter;
@@ -209,22 +233,50 @@ contract SmartDeposit is Ownable {
         deposits[depositId] = Deposit({
             id: depositId,
             propertyId: _propertyId,
-            tenant: msg.sender,
-            amount: msg.value,
+            tenant: address(0), // Sera défini lors du paiement
+            amount: property.depositAmount,
             finalAmount: 0,
-            timestamp: block.timestamp,
-            status: DepositStatus.ACTIVE
+            creationDate: block.timestamp,
+            paymentDate: 0,
+            refundDate: 0,
+            status: DepositStatus.PENDING,
+            depositCode: _depositCode
         });
 
         properties[_propertyId].depositId = depositId;
-        tenantDeposits[msg.sender].push(depositId);
 
-        emit DepositMade(depositId, _propertyId, msg.sender, msg.value);
-
-        emit PropertyStatusChanged(_propertyId, PropertyStatus.RENTED);
-        properties[_propertyId].status = PropertyStatus.RENTED;
+        emit DepositCreated(
+            depositId,
+            _propertyId,
+            property.depositAmount,
+            _depositCode
+        );
 
         return depositId;
+    }
+
+    function payDeposit(
+        uint256 _depositId,
+        string memory _depositCode
+    ) external payable depositExists(_depositId) {
+        Deposit storage deposit = deposits[_depositId];
+        require(deposit.status == DepositStatus.PENDING, "Deposit not pending");
+        require(
+            keccak256(abi.encodePacked(deposit.depositCode)) ==
+                keccak256(abi.encodePacked(_depositCode)),
+            "Invalid deposit code"
+        );
+        require(msg.value == deposit.amount, "Incorrect deposit amount");
+        require(deposit.tenant == address(0), "Deposit already has tenant");
+
+        deposit.tenant = msg.sender;
+        deposit.status = DepositStatus.ACTIVE;
+        deposit.paymentDate = block.timestamp; // Enregistrement de la date de paiement
+        properties[deposit.propertyId].status = PropertyStatus.RENTED;
+        tenantDeposits[msg.sender].push(_depositId);
+
+        emit DepositPaid(_depositId, msg.sender, msg.value);
+        emit PropertyStatusChanged(deposit.propertyId, PropertyStatus.RENTED);
     }
 
     function initiateDispute(
@@ -274,6 +326,9 @@ contract SmartDeposit is Ownable {
         Property storage property = properties[deposit.propertyId];
         property.status = PropertyStatus.NOT_RENTED;
 
+        // Enregistrer la date de remboursement
+        deposit.refundDate = block.timestamp;
+
         // refund, partially refund or retain the deposit
         if (_refundedAmount == deposit.amount) {
             deposit.status = DepositStatus.REFUNDED;
@@ -316,6 +371,7 @@ contract SmartDeposit is Ownable {
 
         deposit.status = DepositStatus.REFUNDED;
         deposit.finalAmount = deposit.amount;
+        deposit.refundDate = block.timestamp; // Enregistrement de la date de remboursement
 
         Property storage property = properties[deposits[_depositId].propertyId];
         property.status = PropertyStatus.NOT_RENTED;
@@ -409,8 +465,11 @@ contract SmartDeposit is Ownable {
             address tenant,
             uint256 amount,
             uint256 finalAmount,
-            uint256 timestamp,
-            DepositStatus status
+            uint256 creationDate,
+            uint256 paymentDate,
+            uint256 refundDate,
+            DepositStatus status,
+            string memory depositCode
         )
     {
         Deposit storage deposit = deposits[_depositId];
@@ -420,8 +479,11 @@ contract SmartDeposit is Ownable {
             deposit.tenant,
             deposit.amount,
             deposit.finalAmount,
-            deposit.timestamp,
-            deposit.status
+            deposit.creationDate,
+            deposit.paymentDate,
+            deposit.refundDate,
+            deposit.status,
+            deposit.depositCode
         );
     }
 

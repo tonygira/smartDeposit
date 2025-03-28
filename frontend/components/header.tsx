@@ -31,7 +31,7 @@ export function Header() {
                 pathname === "/" ? "text-primary" : "text-muted-foreground",
               )}
             >
-              Accueil
+              Fonctionnement
             </Link>
             <Link
               href="/dashboard"
