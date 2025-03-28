@@ -11,7 +11,6 @@ import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
 import { QrCode } from "lucide-react"
-import { client } from "@/lib/client"
 
 export default function Deposits() {
   const { address, isConnected } = useAccount()
