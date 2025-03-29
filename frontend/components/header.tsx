@@ -14,11 +14,11 @@ export function Header() {
       <div className="container flex h-16 items-center justify-between py-3">
         <div className="flex items-center gap-6 md:gap-10">
           <Link href="/" className="flex items-center space-x-2">
-            <Image 
-              src="/smartdeposit.png" 
-              alt="Smart Deposit" 
-              width={48} 
-              height={48} 
+            <Image
+              src="/smartdeposit.png"
+              alt="Smart Deposit"
+              width={48}
+              height={48}
               className="object-contain"
             />
             <span className="font-bold text-xl" style={{ color: "#7759F9" }}>Smart Deposit</span>
@@ -31,7 +31,7 @@ export function Header() {
                 pathname === "/" ? "text-primary" : "text-muted-foreground",
               )}
             >
-              Accueil
+              Fonctionnement
             </Link>
             <Link
               href="/dashboard"

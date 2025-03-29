@@ -7,13 +7,24 @@ import { formatEther, parseEther } from "viem"
 import { Header } from "@/components/header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getPropertyStatusText, PropertyStatus } from "@/lib/contract"
+import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getPropertyStatusText, PropertyStatus, getDepositStatusText, DepositStatus } from "@/lib/contract"
 import { useToast } from "@/hooks/use-toast"
-import { MapPin, DollarSign, User, Loader2, CheckCircle, AlertCircle, ArrowLeft, Upload } from "lucide-react"
+import { MapPin, DollarSign, User, Loader2, CheckCircle, AlertCircle, ArrowLeft, Upload, AlertTriangle } from "lucide-react"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { uploadToPinata } from '@/lib/ipfs-service'
+import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+
+// Ajout des types pour les fichiers
+type FileInfo = {
+  cid: string;
+  fileType: number;
+  uploadTimestamp: bigint;
+  uploader: string;
+  fileName: string;
+};
 
 export default function PropertyDetails() {
   const params = useParams()
@@ -22,10 +33,14 @@ export default function PropertyDetails() {
   const { toast } = useToast()
   const [property, setProperty] = useState<any>(null)
   const [isLandlord, setIsLandlord] = useState(false)
+  const [isAuthorizedTenant, setIsAuthorizedTenant] = useState(false)
+
+  // État pour afficher le message Kleros
+  const [showKlerosMessage, setShowKlerosMessage] = useState(false)
 
   // Transaction status
   const [transactionStatus, setTransactionStatus] = useState<"idle" | "pending" | "confirming" | "success" | "error">("idle")
-  const [txType, setTxType] = useState<"delete" | "deposit" | "refund" | "dispute" | "resolve" | "request" | null>(null)
+  const [txType, setTxType] = useState<"delete" | "deposit" | "refund" | "dispute" | "resolve" | "request" | "upload" | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<string | null>(null)
 
@@ -38,6 +53,68 @@ export default function PropertyDetails() {
   const [refundAmount, setRefundAmount] = useState("")
 
   const propertyId = Number(params.id)
+
+  // Récupération de l'id de la caution courante
+  const { data: currentDepositId } = useReadContract({
+    address: CONTRACT_ADDRESS as `0x${string}`,
+    abi: SMART_DEPOSIT_ABI,
+    functionName: "getDepositIdFromProperty",
+    args: [BigInt(propertyId)],
+  });
+
+  // Log de débogage pour vérifier currentDepositId
+  useEffect(() => {
+    console.log("currentDepositId:", currentDepositId);
+  }, [currentDepositId]);
+
+  // Récupérer les détails du dépôt si l'ID existe
+  const { data: depositData } = useReadContract({
+    address: CONTRACT_ADDRESS as `0x${string}`,
+    abi: SMART_DEPOSIT_ABI,
+    functionName: "getDepositDetails",
+    args: [currentDepositId ? currentDepositId : BigInt(0)],
+  });
+
+  const [depositDetails, setDepositDetails] = useState<{
+    status: number;
+    statusText: string;
+    depositCode?: string;
+    creationDate?: number;
+    paymentDate?: number;
+    refundDate?: number;
+  } | null>(null);
+
+  // Mettre à jour les détails du dépôt quand les données sont reçues
+  useEffect(() => {
+    if (depositData) {
+      const depositDataArray = depositData as unknown as [
+        bigint,
+        bigint,
+        string,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        number,
+        string
+      ];
+
+      setDepositDetails({
+        status: depositDataArray[8],
+        statusText: getDepositStatusText(depositDataArray[8]),
+        depositCode: depositDataArray[9],
+        creationDate: Number(depositDataArray[5]),
+        paymentDate: Number(depositDataArray[6]),
+        refundDate: Number(depositDataArray[7])
+      });
+
+      // Stocker le code de dépôt dans le localStorage pour une utilisation ultérieure
+      if (depositDataArray[9]) {
+        localStorage.setItem(`property_${propertyId}_deposit_code`, depositDataArray[9]);
+      }
+    }
+  }, [depositData, propertyId]);
 
   // Fetch property details
   const { data: propertyData, isLoading, refetch } = useReadContract({
@@ -70,11 +147,48 @@ export default function PropertyDetails() {
       }
 
       setProperty(propertyObj)
-      setIsLandlord(address?.toLowerCase() === landlord.toLowerCase())
+
+      // Vérifier si l'utilisateur est le propriétaire
+      const userIsLandlord = address?.toLowerCase() === landlord.toLowerCase();
+      setIsLandlord(userIsLandlord);
+
+      // Vérifier si l'adresse est un locataire autorisé (a validé le code via deposit/code)
+      const authorizedCode = localStorage.getItem(`property_${propertyId}_validated_code`);
+      setIsAuthorizedTenant(!!authorizedCode);
+
+      // Si l'utilisateur n'est ni le propriétaire ni un locataire ayant validé le code, rediriger
+      if (!userIsLandlord && !authorizedCode) {
+        router.push(`/deposits`);
+      }
+
       // Initialiser le montant de la caution avec la valeur actuelle
       setDepositAmount(formatEther(depositAmount))
     }
-  }, [propertyData, address])
+  }, [propertyData, address, propertyId, router])
+
+  // Rafraîchir les données lorsque l'adresse change
+  useEffect(() => {
+    if (address) {
+      // Rafraîchir toutes les données importantes
+      refetch();
+      if (currentDepositId !== undefined) {
+        // Réinitialiser les états si nécessaire
+        setTransactionStatus("idle");
+        setTxType(null);
+        setError(null);
+        setTxHash(null);
+      }
+
+      // Vérifier à nouveau si l'utilisateur est autorisé après changement d'adresse
+      const authorizedCode = localStorage.getItem(`property_${propertyId}_validated_code`);
+      setIsAuthorizedTenant(!!authorizedCode);
+
+      // Si les données de propriété sont déjà chargées et que l'utilisateur n'est pas autorisé, rediriger
+      if (property && !authorizedCode && address?.toLowerCase() !== property.landlord.toLowerCase()) {
+        router.push(`/deposits`);
+      }
+    }
+  }, [address, refetch, propertyId, router, property, currentDepositId]);
 
   // Make deposit
   const { data: depositHash, isPending: isDepositPending, writeContract: writeDepositContract } = useWriteContract()
@@ -98,7 +212,14 @@ export default function PropertyDetails() {
   })
 
   // Refund deposit (for landlord)
-  const { data: refundHash, isPending: isRefundPending, writeContract: writeRefundContract } = useWriteContract()
+  const { data: refundHash, isPending: isRefundPending, writeContract: writeRefundContract, error: writeRefundError } = useWriteContract()
+
+  // Log l'erreur de writeRefundContract si elle existe
+  useEffect(() => {
+    if (writeRefundError) {
+      console.error("Erreur writeRefundContract:", writeRefundError);
+    }
+  }, [writeRefundError]);
 
   const { isLoading: isRefundConfirming, isSuccess: isRefundConfirmed, error: refundError } = useWaitForTransactionReceipt({
     hash: refundHash,
@@ -116,6 +237,13 @@ export default function PropertyDetails() {
 
   const { isLoading: isResolveConfirming, isSuccess: isResolveConfirmed, error: resolveError } = useWaitForTransactionReceipt({
     hash: resolveHash,
+  })
+
+  // File upload
+  const { data: uploadHash, isPending: isUploadPending, writeContract } = useWriteContract()
+
+  const { isLoading: isUploadConfirming, isSuccess: isUploadConfirmed, error: uploadError } = useWaitForTransactionReceipt({
+    hash: uploadHash,
   })
 
   // Update transaction status based on contract states
@@ -152,9 +280,17 @@ export default function PropertyDetails() {
 
       if (depositError) {
         setTransactionStatus("error");
-        setError("La transaction de dépôt a échoué. Veuillez réessayer.");
+        setError("La transaction de versement de caution a échoué. Veuillez réessayer.");
       }
     } else if (txType === "refund") {
+      console.log("État de la transaction de remboursement:", {
+        isRefundPending,
+        isRefundConfirming,
+        isRefundConfirmed,
+        refundHash,
+        error: refundError || writeRefundError
+      });
+
       if (isRefundPending) {
         setTransactionStatus("pending");
       } else if (isRefundConfirming) {
@@ -167,7 +303,8 @@ export default function PropertyDetails() {
         setTxHash(refundHash);
       }
 
-      if (refundError) {
+      if (refundError || writeRefundError) {
+        console.error("Erreur détaillée de remboursement:", refundError || writeRefundError);
         setTransactionStatus("error");
         setError("La transaction de remboursement a échoué. Veuillez réessayer.");
       }
@@ -222,15 +359,33 @@ export default function PropertyDetails() {
         setTransactionStatus("error");
         setError("La transaction de demande de caution a échoué. Veuillez réessayer.");
       }
+    } else if (txType === "upload") {
+      if (isUploadPending) {
+        setTransactionStatus("pending");
+      } else if (isUploadConfirming) {
+        setTransactionStatus("confirming");
+      } else if (isUploadConfirmed) {
+        setTransactionStatus("success");
+      }
+
+      if (uploadHash) {
+        setTxHash(uploadHash);
+      }
+
+      if (uploadError) {
+        setTransactionStatus("error");
+        setError("La transaction d'upload a échoué. Veuillez réessayer.");
+      }
     }
   }, [
     txType,
     isDeletePending, isDeleteConfirming, isDeleteConfirmed, deleteHash, deleteError,
     isDepositPending, isDepositConfirming, isDepositConfirmed, depositHash, depositError,
-    isRefundPending, isRefundConfirming, isRefundConfirmed, refundHash, refundError,
+    isRefundPending, isRefundConfirming, isRefundConfirmed, refundHash, refundError, writeRefundError,
     isDisputePending, isDisputeConfirming, isDisputeConfirmed, disputeHash, disputeError,
     isResolvePending, isResolveConfirming, isResolveConfirmed, resolveHash, resolveError,
     isRequestPending, isRequestConfirming, isRequestConfirmed, requestHash, requestError,
+    isUploadPending, isUploadConfirming, isUploadConfirmed, uploadHash, uploadError,
   ]);
 
   // Reset transaction tracking
@@ -242,23 +397,37 @@ export default function PropertyDetails() {
     refetch(); // Refresh property data
   };
 
-  const handleMakeDeposit = async () => {
-    if (!property) return
+  // Function to handle redirect after deposit success
+  const handleDepositSuccess = () => {
+    // Redirect to deposits list
+    router.push("/deposits");
+  };
+
+  const handlePayDeposit = async () => {
+    if (!property || !currentDepositId) return
 
     try {
       setTransactionStatus("pending");
       setTxType("deposit");
       setError(null);
 
+      // Récupérer le code validé
+      const depositCode = localStorage.getItem(`property_${propertyId}_validated_code`);
+      if (!depositCode) {
+        setTransactionStatus("error");
+        setError("Code d'accès non trouvé. Veuillez valider le code d'accès fourni par le propriétaire.");
+        return;
+      }
+
       writeDepositContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: SMART_DEPOSIT_ABI,
-        functionName: "makeDeposit",
-        args: [BigInt(propertyId)],
+        functionName: "payDeposit",
+        args: [BigInt(Number(currentDepositId)), depositCode],
         value: parseEther(property.depositAmount),
-      })
+      });
     } catch (error) {
-      console.error("Erreur lors de la création de la caution:", error)
+      console.error("Erreur lors du versement de la caution:", error)
       setTransactionStatus("error");
       setError("Une erreur s'est produite lors de l'envoi de la transaction de caution.");
     }
@@ -298,51 +467,211 @@ export default function PropertyDetails() {
     router.push(`/properties/${propertyId}/qr-code`);
   }
 
-  const handleUploadLease = () => {
-    toast({
-      title: "Information",
-      description: "La fonctionnalité de dépôt de bail sera bientôt disponible.",
-    });
-  }
+  const handleUploadLease = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      try {
+        const cid = await uploadToPinata(file, {
+          propertyId: propertyId.toString(),
+          fileType: 'LEASE'
+        });
+        handleUploadSuccess(cid, 'LEASE', file.name);
+      } catch (error) {
+        console.error("Erreur lors de l'upload du bail:", error);
+        toast({
+          title: "Erreur",
+          description: "Une erreur s'est produite lors de l'upload du bail.",
+          variant: "destructive"
+        });
+      }
+    }
+  };
 
-  const handleUploadPhotos = () => {
-    toast({
-      title: "Information",
-      description: "La fonctionnalité de dépôt de photos sera bientôt disponible.",
-    });
-  }
+  const handleUploadPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      try {
+        const cid = await uploadToPinata(file, {
+          propertyId: propertyId.toString(),
+          fileType: 'PHOTOS'
+        });
+        handleUploadSuccess(cid, 'PHOTOS', file.name);
+      } catch (error) {
+        console.error("Erreur lors de l'upload des photos:", error);
+        toast({
+          title: "Erreur",
+          description: "Une erreur s'est produite lors de l'upload des photos.",
+          variant: "destructive"
+        });
+      }
+    }
+  };
 
-  // Récupération de l'id de deposit
-  const { data: depositId } = useReadContract({
-    address: CONTRACT_ADDRESS as `0x${string}`,
-    abi: SMART_DEPOSIT_ABI,
-    functionName: "getDepositIdFromProperty",
-    args: [BigInt(propertyId)],
-  });
+  const handleUploadEntryInventory = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      try {
+        const cid = await uploadToPinata(file, {
+          propertyId: propertyId.toString(),
+          fileType: 'ENTRY_INVENTORY'
+        });
+        handleUploadSuccess(cid, 'ENTRY_INVENTORY', file.name);
+      } catch (error) {
+        console.error("Erreur lors de l'upload de l'état des lieux d'entrée:", error);
+        toast({
+          title: "Erreur",
+          description: "Une erreur s'est produite lors de l'upload de l'état des lieux d'entrée.",
+          variant: "destructive"
+        });
+      }
+    }
+  };
 
-  const handleRefundDeposit = async () => {
-    if (!property || depositId === 0) return;
+  const handleUploadExitInventory = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      try {
+        const cid = await uploadToPinata(file, {
+          propertyId: propertyId.toString(),
+          fileType: 'EXIT_INVENTORY'
+        });
+        handleUploadSuccess(cid, 'EXIT_INVENTORY', file.name);
+      } catch (error) {
+        console.error("Erreur lors de l'upload de l'état des lieux de sortie:", error);
+        toast({
+          title: "Erreur",
+          description: "Une erreur s'est produite lors de l'upload de l'état des lieux de sortie.",
+          variant: "destructive"
+        });
+      }
+    }
+  };
+
+  const handleUploadSuccess = async (cid: string, fileType: 'LEASE' | 'PHOTOS' | 'ENTRY_INVENTORY' | 'EXIT_INVENTORY', fileName: string) => {
+    console.log(`CID reçu: ${cid}, Type: ${fileType}, Nom: ${fileName}`);
+
+    if (!property) return;
 
     try {
+      setTransactionStatus("pending");
+      setTxType("upload");
+      setError(null);
+
+      let fileTypeEnum;
+      switch (fileType) {
+        case 'LEASE':
+          fileTypeEnum = 0;
+          break;
+        case 'PHOTOS':
+          fileTypeEnum = 1;
+          break;
+        case 'ENTRY_INVENTORY':
+          fileTypeEnum = 2;
+          break;
+        case 'EXIT_INVENTORY':
+          fileTypeEnum = 3;
+          break;
+        default:
+          fileTypeEnum = 0;
+      }
+
+      writeContract({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        abi: SMART_DEPOSIT_ABI,
+        functionName: "addFile",
+        args: [BigInt(propertyId), cid, fileTypeEnum, fileName],
+      });
+
+      toast({
+        title: "Upload réussi",
+        description: `Le fichier a été uploadé avec succès! CID: ${cid.slice(0, 10)}...`,
+      });
+    } catch (error) {
+      console.error(`Erreur lors de l'ajout du fichier au contrat:`, error);
+      setTransactionStatus("error");
+      setError("Une erreur s'est produite lors de l'enregistrement du fichier.");
+    }
+  };
+
+  // Fonction utilitaire pour afficher les erreurs de contrat de manière plus lisible
+  const formatContractError = (error: any) => {
+    if (!error) return "Erreur inconnue";
+
+    // Essayer de parser le message d'erreur
+    const errorString = String(error);
+
+    // Rechercher les messages d'erreur spécifiques
+    if (errorString.includes("execution reverted")) {
+      if (errorString.includes("Caller is not authorized")) {
+        return "Vous n'êtes pas autorisé à effectuer cette action (vous n'êtes pas le propriétaire).";
+      }
+      if (errorString.includes("Deposit not found")) {
+        return "La caution n'a pas été trouvée. Vérifiez l'ID du dépôt.";
+      }
+      if (errorString.includes("Deposit is not in the PAID state")) {
+        return "La caution n'est pas dans l'état PAYÉE. Seules les cautions payées peuvent être remboursées.";
+      }
+      // Erreur générique de revert
+      return "L'exécution de la transaction a été annulée par le contrat: " + errorString;
+    }
+
+    return errorString;
+  };
+
+  const handleRefundDeposit = async () => {
+    if (!property || !currentDepositId || Number(currentDepositId) === 0) {
+      console.error("Impossible de restituer la caution", {
+        propertyExists: !!property,
+        currentDepositId: currentDepositId ? Number(currentDepositId) : 0
+      });
+      toast({
+        title: "Erreur",
+        description: "Impossible de restituer la caution. Aucun ID de dépôt valide trouvé.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      console.log("Initialisation de la restitution de caution pour le dépôt:", Number(currentDepositId));
+      console.log("Détails de la transaction:", {
+        address: CONTRACT_ADDRESS,
+        functionName: "refundDeposit",
+        args: [BigInt(Number(currentDepositId))],
+        currentDepositIdType: typeof currentDepositId,
+        parsedDepositId: BigInt(Number(currentDepositId)).toString()
+      });
+
       setTransactionStatus("pending");
       setTxType("refund");
       setError(null);
 
+      // Assurons-nous que l'ID est correctement formaté
+      const depositIdBigInt = BigInt(Number(currentDepositId));
+
+      // Exécution de la transaction
       writeRefundContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: SMART_DEPOSIT_ABI,
         functionName: "refundDeposit",
-        args: [BigInt(depositId)],
+        args: [depositIdBigInt],
       });
     } catch (error) {
       console.error("Erreur lors du remboursement de la caution:", error);
+      const errorMessage = formatContractError(error);
       setTransactionStatus("error");
-      setError("Une erreur s'est produite lors de l'envoi de la transaction de remboursement.");
+      setError(`La transaction de remboursement a échoué: ${errorMessage}`);
+
+      toast({
+        title: "Erreur de transaction",
+        description: errorMessage,
+        variant: "destructive",
+      });
     }
   };
 
   const handleInitiateDispute = async () => {
-    if (!property || depositId === 0) return
+    if (!property || !currentDepositId || Number(currentDepositId) === 0) return
 
     try {
       setTransactionStatus("pending");
@@ -353,7 +682,7 @@ export default function PropertyDetails() {
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: SMART_DEPOSIT_ABI,
         functionName: "initiateDispute",
-        args: [BigInt(depositId)],
+        args: [BigInt(Number(currentDepositId))],
       })
     } catch (error) {
       console.error("Erreur lors de l'ouverture du litige:", error)
@@ -368,18 +697,18 @@ export default function PropertyDetails() {
   };
 
   const handleResolveDispute = async () => {
-    if (!property || depositId === 0 || !refundAmount) return;
-    
+    if (!property || !currentDepositId || Number(currentDepositId) === 0 || !refundAmount) return;
+
     try {
       setTransactionStatus("pending");
       setTxType("resolve");
       setError(null);
-      
+
       writeResolveContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: SMART_DEPOSIT_ABI,
         functionName: "resolveDispute",
-        args: [BigInt(depositId), parseEther(refundAmount)],
+        args: [BigInt(Number(currentDepositId)), parseEther(refundAmount)],
       });
     } catch (error) {
       console.error("Erreur lors de la résolution du litige:", error);
@@ -403,11 +732,89 @@ export default function PropertyDetails() {
         return "Litige résolu avec succès!";
       case "request":
         return "Demande de caution envoyée avec succès!";
+      case "upload":
+        return "Fichier enregistré avec succès!";
       default:
         return "Transaction effectuée avec succès!";
     }
   };
 
+  const [files, setFiles] = useState<FileInfo[]>([]);
+
+  // Récupération des fichiers
+  const { data: propertyFiles, refetch: refetchFiles } = useReadContract({
+    address: CONTRACT_ADDRESS as `0x${string}`,
+    abi: SMART_DEPOSIT_ABI,
+    functionName: "getPropertyFiles",
+    args: [BigInt(propertyId)],
+  });
+
+  // Mise à jour des fichiers quand les données sont reçues
+  useEffect(() => {
+    if (propertyFiles) {
+      console.log("Fichiers reçus:", propertyFiles);
+      setFiles(propertyFiles as FileInfo[]);
+    }
+  }, [propertyFiles]);
+
+  // Rafraîchir les fichiers après un upload réussi
+  useEffect(() => {
+    if (transactionStatus === "success" && txType === "upload") {
+      refetchFiles();
+    }
+  }, [transactionStatus, txType, refetchFiles]);
+
+  // Effet pour masquer automatiquement le message Kleros après 5 secondes
+  useEffect(() => {
+    if (showKlerosMessage) {
+      const timer = setTimeout(() => {
+        setShowKlerosMessage(false);
+      }, 5000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [showKlerosMessage]);
+
+  // Fonction pour obtenir le type de fichier en texte
+  const getFileTypeText = (fileType: number) => {
+    switch (fileType) {
+      case 0:
+        return "Bail";
+      case 1:
+        return "Photos";
+      case 2:
+        return "État des lieux d'entrée";
+      case 3:
+        return "État des lieux de sortie";
+      default:
+        return "Fichier";
+    }
+  };
+
+  // Fonction pour télécharger un fichier
+  const handleDownloadFile = async (cid: string, fileName: string) => {
+    try {
+      const response = await fetch(`https://gateway.pinata.cloud/ipfs/${cid}`);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Erreur lors du téléchargement:", error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de télécharger le fichier.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Utilisation d'une condition de garde au début du rendu
   if (!isConnected) {
     return (
       <div className="flex min-h-screen flex-col">
@@ -519,22 +926,26 @@ export default function PropertyDetails() {
             <CardFooter className="flex justify-end gap-2">
               {transactionStatus === "success" && (
                 <>
-                  <Button onClick={() => router.push(
-                    txType === "deposit"
-                      ? "/deposits"
-                      : isLandlord
-                        ? "/dashboard"
-                        : "/deposits"
-                  )} variant="default">
-                    {txType === "deposit"
-                      ? "Voir mes cautions"
-                      : isLandlord
-                        ? "Retour au tableau de bord"
-                        : "Voir mes cautions"}
-                  </Button>
-                  <Button onClick={resetTransaction} variant="outline">
-                    Continuer
-                  </Button>
+                  {txType === "deposit" ? (
+                    <Button onClick={handleDepositSuccess} variant="default">
+                      Voir mes cautions
+                    </Button>
+                  ) : (
+                    <>
+                      <Button onClick={() => {
+                        if (showDepositRequestForm) {
+                          setShowDepositRequestForm(false);
+                        } else {
+                          resetTransaction();
+                        }
+                      }} variant="default">
+                        Retour sur le bien
+                      </Button>
+                      <Button onClick={resetTransaction} variant="outline">
+                        Continuer
+                      </Button>
+                    </>
+                  )}
                 </>
               )}
               {transactionStatus === "error" && (
@@ -546,18 +957,34 @@ export default function PropertyDetails() {
           </Card>
         )}
 
-        {/* Formulaire de demande de caution */}
+        {showKlerosMessage && (
+          <Alert className="bg-red-50 border-red-200 mb-6">
+            <AlertCircle className="h-5 w-5 text-red-500" />
+            <AlertTitle>Fonctionnalité non disponible</AlertTitle>
+            <AlertDescription>
+              Cette fonctionnalité n'est pas encore disponible.
+              <Button
+                variant="link"
+                className="p-0 h-auto text-red-500 underline ml-2"
+                onClick={() => setShowKlerosMessage(false)}
+              >
+                Fermer
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Formulaire global pour le locataire et le propriétaire */}
         {showDepositRequestForm && (
           <div className="grid grid-cols-1 gap-8 mb-8">
             <Card>
               <CardHeader>
-                <CardTitle>Demande de caution</CardTitle>
-                <CardDescription>Complétez les informations pour demander une caution</CardDescription>
+                <CardTitle>Votre bien</CardTitle>
+                <CardDescription>Informations sur le bien concerné par la caution</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Section "Votre bien" */}
                 <div>
-                  <h3 className="text-lg font-semibold mb-3">Votre bien</h3>
                   <div className="grid md:grid-cols-2 gap-4">
                     <div>
                       <Label className="text-sm text-gray-500">Nom du bien</Label>
@@ -577,37 +1004,103 @@ export default function PropertyDetails() {
                     </div>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
 
-                <Separator />
-
-                {/* Section "Dépose de caution" */}
-                <div>
-                  <h3 className="text-lg font-semibold mb-2">Dépose de caution</h3>
-                  <p className="text-gray-600 mb-4">Veuillez renseigner les informations suivantes :</p>
-
+            {/* Section Demande de caution pour propriétaire uniquement */}
+            {isLandlord && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Demande de caution</CardTitle>
+                  <CardDescription>Veuillez renseigner les informations suivantes :</CardDescription>
+                </CardHeader>
+                <CardContent>
                   <div className="flex flex-col gap-4">
                     <div className="flex flex-col md:flex-row gap-4 mb-4">
-                      <Button
-                        variant="outline"
-                        className="flex items-center"
-                        onClick={handleUploadLease}
-                      >
-                        <Upload className="mr-2 h-4 w-4" />
-                        Déposer le bail
-                      </Button>
+                      <div>
+                        <input
+                          type="file"
+                          onChange={handleUploadLease}
+                          style={{ display: 'none' }}
+                          id="upload-lease"
+                        />
+                        <label htmlFor="upload-lease">
+                          <Button
+                            variant="outline"
+                            className="flex items-center"
+                            type="button"
+                            onClick={() => document.getElementById('upload-lease')?.click()}
+                          >
+                            <Upload className="mr-2 h-4 w-4" />
+                            Déposer le bail
+                          </Button>
+                        </label>
+                      </div>
 
-                      <Button
-                        variant="outline"
-                        className="flex items-center"
-                        onClick={handleUploadPhotos}
-                      >
-                        <Upload className="mr-2 h-4 w-4" />
-                        Déposer photos
-                      </Button>
+                      <div>
+                        <input
+                          type="file"
+                          onChange={handleUploadPhotos}
+                          style={{ display: 'none' }}
+                          id="upload-photos"
+                        />
+                        <label htmlFor="upload-photos">
+                          <Button
+                            variant="outline"
+                            className="flex items-center"
+                            type="button"
+                            onClick={() => document.getElementById('upload-photos')?.click()}
+                          >
+                            <Upload className="mr-2 h-4 w-4" />
+                            Déposer photos
+                          </Button>
+                        </label>
+                      </div>
+
+                      <div>
+                        <input
+                          type="file"
+                          onChange={handleUploadEntryInventory}
+                          style={{ display: 'none' }}
+                          id="upload-entry-inventory"
+                        />
+                        <label htmlFor="upload-entry-inventory">
+                          <Button
+                            variant="outline"
+                            className="flex items-center"
+                            type="button"
+                            onClick={() => document.getElementById('upload-entry-inventory')?.click()}
+                          >
+                            <Upload className="mr-2 h-4 w-4" />
+                            Déposer l'état des lieux d'entrée
+                          </Button>
+                        </label>
+                      </div>
+
+                      <div>
+                        <input
+                          type="file"
+                          onChange={handleUploadExitInventory}
+                          style={{ display: 'none' }}
+                          id="upload-exit-inventory"
+                        />
+                        <label htmlFor="upload-exit-inventory">
+                          <Button
+                            variant="outline"
+                            className="flex items-center"
+                            type="button"
+                            onClick={() => document.getElementById('upload-exit-inventory')?.click()}
+                            disabled={!(currentDepositId && depositDetails && depositDetails.status >= DepositStatus.PAID)}
+                          >
+                            <Upload className="mr-2 h-4 w-4" />
+                            Déposer l'état des lieux de sortie
+                          </Button>
+                        </label>
+                      </div>
                     </div>
 
                     <div className="mb-2">
-                      <Label htmlFor="depositAmount">Montant de la caution (€)</Label>
+                      <Label htmlFor="depositAmount">Montant de la caution (ETH)</Label>
                       <Input
                         id="depositAmount"
                         type="number"
@@ -617,36 +1110,37 @@ export default function PropertyDetails() {
                       />
                     </div>
                   </div>
-                </div>
-              </CardContent>
-              <CardFooter className="flex justify-between">
-                <Button
-                  variant="outline"
-                  onClick={handleCancelDepositRequest}
-                  className="flex items-center"
-                >
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Retour
-                </Button>
-                <Button onClick={handleSubmitDepositRequest}>Valider la caution</Button>
-              </CardFooter>
-            </Card>
+                </CardContent>
+                <CardFooter className="flex justify-between">
+                  <Button
+                    variant="outline"
+                    onClick={handleCancelDepositRequest}
+                    className="flex items-center"
+                  >
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Retour
+                  </Button>
+                  <Button onClick={handleSubmitDepositRequest}>Valider la caution</Button>
+                </CardFooter>
+              </Card>
+            )}
           </div>
         )}
 
-        {(transactionStatus === "idle" || transactionStatus === "error") && !showDepositRequestForm && (
+        {/* Section d'actions initiales sur le bien */}
+        {!showDepositRequestForm && (transactionStatus === "idle" || transactionStatus === "error") ? (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="md:col-span-1">
-              <div className="rounded-lg overflow-hidden mb-6">
+              <div className="rounded-lg overflow-hidden mb-6 border border-gray-200 shadow-sm">
                 <img
                   src={"/maison.png"}
                   alt={property.name}
-                  className="w-full h-[200px] object-cover"
+                  className="w-full h-auto object-contain bg-white p-4 max-h-[180px]"
                 />
               </div>
             </div>
 
-            <Card className="md:col-span-3">
+            <Card className={`md:col-span-3 ${property.status === "En litige" ? 'bg-red-50' : ''}`}>
               <CardHeader>
                 <CardTitle className="text-2xl">{property.name} - {property.status}</CardTitle>
                 <CardDescription className="flex items-center text-base">
@@ -665,40 +1159,99 @@ export default function PropertyDetails() {
                     Propriétaire: {property.landlord.slice(0, 6)}...{property.landlord.slice(-4)}
                   </span>
                 </div>
+
+                {property.status === "En litige" && (
+                  <Alert className="bg-red-100 border-red-300 text-red-800">
+                    <AlertTriangle className="h-5 w-5 text-red-500" />
+                    <AlertTitle>Bien en litige</AlertTitle>
+                    <AlertDescription>
+                      Ce bien fait actuellement l'objet d'un litige concernant la caution.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {typeof currentDepositId !== 'undefined' && depositDetails && Number(currentDepositId) > 0 && depositDetails.status === DepositStatus.PENDING && (
+                  <Alert className="bg-blue-50 border-blue-200">
+                    <AlertCircle className="h-5 w-5 text-blue-500" />
+                    <AlertTitle>Caution en attente de paiement</AlertTitle>
+                    <AlertDescription>
+                      Vous avez créé une demande de caution pour ce bien. Le locataire doit maintenant
+                      utiliser le code QR ou le code unique pour effectuer son paiement.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {typeof currentDepositId !== 'undefined' && depositDetails && Number(currentDepositId) > 0 &&
+                  [DepositStatus.REFUNDED, DepositStatus.PARTIALLY_REFUNDED, DepositStatus.RETAINED].includes(depositDetails.status) && (
+                    <Alert className="bg-green-50 border-green-200">
+                      <CheckCircle className="h-5 w-5 text-green-500" />
+                      <AlertTitle>Caution clôturée</AlertTitle>
+                      <AlertDescription>
+                        La caution pour ce bien a été clôturée. Vous pouvez maintenant créer une nouvelle demande de caution.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
                 {isLandlord && (
                   <div className="mt-4">
                     {property.status === "Non loué" && (
                       <div className="flex space-x-3">
-                        <Button
-                          onClick={handleDeleteProperty}
-                          variant="destructive"
-                          size="sm"
-                          disabled={isFormDisabled}
-                        >
-                          {isFormDisabled && txType === "delete" ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              En cours...
-                            </>
-                          ) : (
-                            "Supprimer"
-                          )}
-                        </Button>
-                        <Button
-                          onClick={handleRequestDeposit}
-                          size="sm"
-                          disabled={isFormDisabled}
-                          style={{ backgroundColor: "#7759F9" }}
-                        >
-                          {isFormDisabled && txType === "request" ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              En cours...
-                            </>
-                          ) : (
-                            "Demande de caution"
-                          )}
-                        </Button>
+                        {!currentDepositId && files.length === 0 && (
+                          <Button
+                            onClick={handleDeleteProperty}
+                            variant="destructive"
+                            size="sm"
+                            disabled={isFormDisabled}
+                          >
+                            {isFormDisabled && txType === "delete" ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                En cours...
+                              </>
+                            ) : (
+                              "Supprimer"
+                            )}
+                          </Button>
+                        )}
+                        {currentDepositId && depositDetails && Number(currentDepositId) > 0 &&
+                          ![DepositStatus.REFUNDED, DepositStatus.PARTIALLY_REFUNDED, DepositStatus.RETAINED].includes(depositDetails.status) ? (
+                          <Button
+                            onClick={() => {
+                              // Utiliser le code de dépôt provenant directement du contrat
+                              if (depositDetails?.depositCode) {
+                                router.push(`/properties/${propertyId}/qr-code?useExistingCode=true`);
+                              } else {
+                                // Fallback au localStorage si pour une raison le code n'est pas disponible dans depositDetails
+                                const savedCode = localStorage.getItem(`property_${propertyId}_deposit_code`);
+                                if (savedCode) {
+                                  router.push(`/properties/${propertyId}/qr-code?useExistingCode=true`);
+                                } else {
+                                  router.push(`/properties/${propertyId}/qr-code`);
+                                }
+                              }
+                            }}
+                            size="sm"
+                            style={{ backgroundColor: "#7759F9" }}
+                          >
+                            Voir le code QR
+                          </Button>
+                        ) : (
+                          <Button
+                            onClick={handleRequestDeposit}
+                            size="sm"
+                            disabled={isFormDisabled}
+                            style={{ backgroundColor: "#7759F9" }}
+                          >
+                            {isFormDisabled && txType === "request" ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                En cours...
+                              </>
+                            ) : (
+                              "Demande de caution"
+                            )}
+                          </Button>
+                        )}
                       </div>
                     )}
 
@@ -740,13 +1293,15 @@ export default function PropertyDetails() {
                     {property.status === "En litige" && (
                       <div className="space-y-4">
                         {!showRefundForm ? (
-                          <Button
-                            onClick={handleShowRefundForm}
-                            size="sm"
-                            disabled={isFormDisabled}
-                          >
-                            Régler le litige
-                          </Button>
+                          <div className="flex space-x-3">
+                            <Button
+                              onClick={handleShowRefundForm}
+                              size="sm"
+                              disabled={isFormDisabled}
+                            >
+                              Régler le litige
+                            </Button>
+                          </div>
                         ) : (
                           <div className="space-y-4">
                             <div className="space-y-2">
@@ -778,6 +1333,13 @@ export default function PropertyDetails() {
                                 )}
                               </Button>
                               <Button
+                                onClick={() => setShowKlerosMessage(true)}
+                                size="sm"
+                                style={{ backgroundColor: "#7759F9", color: "white" }}
+                              >
+                                Confier le dossier à Kleros
+                              </Button>
+                              <Button
                                 onClick={() => setShowRefundForm(false)}
                                 variant="outline"
                                 size="sm"
@@ -792,28 +1354,130 @@ export default function PropertyDetails() {
                     )}
                   </div>
                 )}
-
-                {!isLandlord && (
-                  <Button
-                    onClick={handleMakeDeposit}
-                    className="mt-6"
-                    size="sm"
-                    disabled={isFormDisabled}
-                  >
-                    {isFormDisabled && txType === "deposit" ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        En cours...
-                      </>
-                    ) : (
-                      `Verser la caution (${property.depositAmount} ETH)`
-                    )}
-                  </Button>
-                )}
               </CardContent>
             </Card>
           </div>
-        )}
+        ) : null}
+
+        {/* Section du locataire */}
+        {!isLandlord && isAuthorizedTenant && (transactionStatus === "idle" || transactionStatus === "error") && !showDepositRequestForm ? (
+          <Card className="mt-8">
+            <CardHeader>
+              <CardTitle>Versement de caution</CardTitle>
+              <CardDescription>Veuillez verser la caution pour ce bien</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!depositDetails || depositDetails.status !== DepositStatus.PENDING ? (
+                <div>
+                  {depositDetails && depositDetails.status === DepositStatus.PAID ? (
+                    <div className="p-4 bg-green-50 border border-green-200 rounded-md">
+                      <p className="text-green-700 flex items-center">
+                        <CheckCircle className="mr-2 h-5 w-5" />
+                        Vous avez déjà versé la caution pour ce bien
+                      </p>
+                      <p className="text-sm text-gray-600 mt-2">
+                        Montant versé: {property.depositAmount} ETH
+                      </p>
+                      {depositDetails.paymentDate && (
+                        <p className="text-sm text-gray-600 mt-1">
+                          Date de versement: {new Date(Number(depositDetails.paymentDate) * 1000).toLocaleDateString('fr-FR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-yellow-600">Le propriétaire n'a pas encore activé la demande de caution pour ce bien.</p>
+                      <p className="text-sm text-gray-500 mt-2">Statut actuel: {depositDetails ? depositDetails.statusText : 'Non défini'}</p>
+                      {depositDetails && depositDetails.creationDate ? (
+                        <p className="text-sm text-gray-500 mt-1">
+                          Date de création: {new Date(Number(depositDetails.creationDate) * 1000).toLocaleDateString('fr-FR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              ) : (
+                <Button
+                  onClick={handlePayDeposit}
+                  className="mt-6"
+                  size="sm"
+                  disabled={isFormDisabled}
+                >
+                  {isFormDisabled && txType === "deposit" ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      En cours...
+                    </>
+                  ) : (
+                    `Verser la caution (${property.depositAmount} ETH)`
+                  )}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {/* Section des fichiers uploadés - visible par tous */}
+        <Card className={`mt-8 ${property.status === "En litige" ? 'bg-red-50' : ''}`}>
+          <CardHeader>
+            <CardTitle>Documents associés</CardTitle>
+            <CardDescription>Liste des documents uploadés pour ce bien</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {files.length === 0 ? (
+              <p className="text-gray-500">Aucun document n'a encore été uploadé.</p>
+            ) : (
+              <div className="grid gap-4">
+                {files.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className="p-2 bg-gray-100 rounded-full">
+                        <Upload className="h-5 w-5 text-gray-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{getFileTypeText(Number(file.fileType))}</p>
+                        <p className="text-sm text-gray-500">
+                          {file.fileName}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          Uploadé le {file.uploadTimestamp ? new Date(Number(file.uploadTimestamp) * 1000).toLocaleDateString('fr-FR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          }) : 'Date inconnue'}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDownloadFile(file.cid, file.fileName)}
+                    >
+                      Télécharger
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </main>
     </div>
   )

@@ -72,7 +72,7 @@ Deposit {
   address tenant;
   uint256 amount;
   uint256 timestamp;
-  DepositStatus status;  // Enum: PENDING, ACTIVE, DISPUTED, RELEASED, REFUNDED
+  DepositStatus status;  // Enum: PENDING, PAID, DISPUTED, RETAINED, REFUNDED, PARTIALLY_REFUNDED
 }
 
 ```
