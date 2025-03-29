@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi"
-import { formatEther } from "viem"
+import { formatEther, parseEther } from "viem"
 import { QRCodeSVG } from "qrcode.react"
 import { Header } from "@/components/header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
@@ -28,8 +28,11 @@ export default function PropertyQRCode() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<string | null>(null)
   const [isExistingCode, setIsExistingCode] = useState(false)
-
   const searchParams = useSearchParams()
+  const presetAmount = searchParams.get('amount')
+  const [depositAmountValue, setDepositAmountValue] = useState(presetAmount || "0.1")
+  const [copySuccess, setCopySuccess] = useState(false)
+
   const useExistingCode = searchParams.get('useExistingCode') === 'true'
 
   const propertyId = Number(params.id)
@@ -140,12 +143,11 @@ export default function PropertyQRCode() {
   // Process property data
   useEffect(() => {
     if (propertyData) {
-      const [id, landlord, name, location, depositAmount, status] = propertyData as [
+      const [id, landlord, name, location, status] = propertyData as [
         bigint,
         string,
         string,
         string,
-        bigint,
         number
       ]
 
@@ -154,14 +156,20 @@ export default function PropertyQRCode() {
         landlord,
         name,
         location,
-        depositAmount: formatEther(depositAmount),
         status: getPropertyStatusText(status)
       }
 
       setProperty(propertyObj)
-      setIsLandlord(address?.toLowerCase() === landlord.toLowerCase())
+      const userIsLandlord = address?.toLowerCase() === landlord.toLowerCase();
+      setIsLandlord(userIsLandlord);
+      
+      // Vérification de sécurité : seul le propriétaire peut accéder à cette page
+      if (!userIsLandlord) {
+        // Rediriger vers la page principale des dépôts si l'utilisateur n'est pas le propriétaire
+        router.push('/deposits');
+      }
     }
-  }, [propertyData, address])
+  }, [propertyData, address, router])
 
   // Suivre l'état de la transaction
   useEffect(() => {
@@ -200,9 +208,13 @@ export default function PropertyQRCode() {
       return;
     }
 
+    // Utiliser le montant défini dans l'interface
+    const depositAmount = depositAmountValue;
+
     console.log("Tentative de création de dépôt:", {
       propertyId,
       uniqueCode,
+      depositAmount,
       currentDepositId: currentDepositId ? Number(currentDepositId) : 0,
     });
 
@@ -230,14 +242,15 @@ export default function PropertyQRCode() {
 
       console.log("Envoi de la transaction createDeposit avec:", {
         propertyId: BigInt(propertyId),
-        uniqueCode
+        uniqueCode,
+        depositAmount
       });
 
       writeDepositContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: SMART_DEPOSIT_ABI,
         functionName: "createDeposit",
-        args: [BigInt(propertyId), uniqueCode],
+        args: [BigInt(propertyId), uniqueCode, parseEther(depositAmount)],
       });
     } catch (error) {
       console.error("Erreur lors de la création de la caution:", error);
@@ -255,14 +268,13 @@ export default function PropertyQRCode() {
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(uniqueCode)
-    toast({
-      title: "Code copié !",
-      description: "Le code unique a été copié dans le presse-papier.",
-    })
+    setCopySuccess(true)
+    setTimeout(() => setCopySuccess(false), 3000) // Masquer le message après 3 secondes
   }
 
   const handleGoBack = () => {
-    router.back()
+    // Rediriger vers la page du bien avec le paramètre pour afficher la demande de caution
+    router.push(`/properties/${propertyId}?showDepositRequest=true`)
   }
 
   const handleContinueSuccess = () => {
@@ -277,8 +289,12 @@ export default function PropertyQRCode() {
     return (
       <div className="container py-10">
         <Header />
-        <div className="flex justify-center items-center min-h-[60vh]">
-          <p>Chargement des informations du bien...</p>
+        <div className="flex justify-center items-center flex-col min-h-[60vh]">
+          <p className="text-xl font-semibold mb-4">Chargement en cours</p>
+          <div className="flex items-center">
+            <Loader2 className="h-6 w-6 mr-2 animate-spin text-purple-600" />
+            <p>Vérification des informations du bien...</p>
+          </div>
         </div>
       </div>
     )
@@ -288,8 +304,17 @@ export default function PropertyQRCode() {
     return (
       <div className="container py-10">
         <Header />
-        <div className="flex justify-center items-center min-h-[60vh]">
-          <p>Bien non trouvé ou accès non autorisé.</p>
+        <div className="flex justify-center items-center flex-col min-h-[60vh]">
+          <p className="text-xl font-semibold mb-4">Accès non autorisé</p>
+          <p className="mb-6">Seul le propriétaire peut accéder à la génération du QR code pour la caution.</p>
+          <Button 
+            variant="outline" 
+            onClick={() => router.push('/deposits')}
+            className="flex items-center"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Retour aux cautions
+          </Button>
         </div>
       </div>
     )
@@ -298,12 +323,14 @@ export default function PropertyQRCode() {
   return (
     <div className="container py-10">
       <Header />
-      <div className="mb-8">
-        <Button variant="outline" onClick={handleGoBack} className="flex items-center">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Retour au bien
-        </Button>
-      </div>
+      {transactionStatus !== "success" && (
+        <div className="mb-8 mt-6">
+          <Button variant="outline" onClick={handleGoBack} className="flex items-center">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Retour
+          </Button>
+        </div>
+      )}
 
       {transactionStatus !== "idle" && (
         <Card className="mb-6">
@@ -407,6 +434,14 @@ export default function PropertyQRCode() {
                   <Copy className="h-5 w-5" />
                 </Button>
               </div>
+              {copySuccess && (
+                <Alert className="mt-2 bg-green-50 border-green-200">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <AlertDescription className="text-sm">
+                    Code copié dans le presse-papier !
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
 
             <div className="w-full max-w-md mb-4">
@@ -414,7 +449,11 @@ export default function PropertyQRCode() {
               <ul className="space-y-2">
                 <li><strong>Nom:</strong> {property.name}</li>
                 <li><strong>Emplacement:</strong> {property.location}</li>
-                <li><strong>Montant de la caution:</strong> {property.depositAmount} ETH</li>
+                <li className="flex items-center justify-between">
+                  <div>
+                    <strong>Montant de la caution:</strong> {depositAmountValue} ETH
+                  </div>
+                </li>
               </ul>
             </div>
 

@@ -304,12 +304,6 @@ export const SMART_DEPOSIT_ABI = [
       },
       {
         "indexed": false,
-        "internalType": "uint256",
-        "name": "depositAmount",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
         "internalType": "enum SmartDeposit.PropertyStatus",
         "name": "status",
         "type": "uint8"
@@ -376,6 +370,11 @@ export const SMART_DEPOSIT_ABI = [
         "internalType": "string",
         "name": "_depositCode",
         "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_depositAmount",
+        "type": "uint256"
       }
     ],
     "name": "createDeposit",
@@ -400,11 +399,6 @@ export const SMART_DEPOSIT_ABI = [
         "internalType": "string",
         "name": "_location",
         "type": "string"
-      },
-      {
-        "internalType": "uint256",
-        "name": "_depositAmount",
-        "type": "uint256"
       }
     ],
     "name": "createProperty",
@@ -642,11 +636,6 @@ export const SMART_DEPOSIT_ABI = [
             "type": "string"
           },
           {
-            "internalType": "uint256",
-            "name": "depositAmount",
-            "type": "uint256"
-          },
-          {
             "internalType": "enum SmartDeposit.PropertyStatus",
             "name": "status",
             "type": "uint8"
@@ -708,11 +697,6 @@ export const SMART_DEPOSIT_ABI = [
         "internalType": "string",
         "name": "",
         "type": "string"
-      },
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
       },
       {
         "internalType": "enum SmartDeposit.PropertyStatus",

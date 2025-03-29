@@ -16,7 +16,6 @@ contract SmartDeposit is Ownable {
         address landlord; /// @notice Address of the property owner
         string name; /// @notice Name or title of the property
         string location; /// @notice Physical location of the property
-        uint256 depositAmount; /// @notice Required deposit amount in wei
         PropertyStatus status; /// @notice Current status of the property
     }
 
@@ -94,13 +93,11 @@ contract SmartDeposit is Ownable {
     /// @param propertyId Unique ID of the new property
     /// @param landlord Address of the property owner
     /// @param name Name of the property
-    /// @param depositAmount Required deposit amount
     /// @param status Initial property status
     event PropertyCreated(
         uint256 indexed propertyId,
         address indexed landlord,
         string name,
-        uint256 depositAmount,
         PropertyStatus status
     );
 
@@ -196,12 +193,10 @@ contract SmartDeposit is Ownable {
     /// @dev Increments propertyCounter and adds property to landlord's portfolio
     /// @param _name Name of the property
     /// @param _location Physical location of the property
-    /// @param _depositAmount Amount required for the deposit in wei
     /// @return propertyId The ID of the newly created property
     function createProperty(
         string memory _name,
-        string memory _location,
-        uint256 _depositAmount
+        string memory _location
     ) external returns (uint256) {
         propertyCounter++;
         uint256 propertyId = propertyCounter;
@@ -212,7 +207,6 @@ contract SmartDeposit is Ownable {
             landlord: msg.sender,
             name: _name,
             location: _location,
-            depositAmount: _depositAmount,
             status: PropertyStatus.NOT_RENTED
         });
 
@@ -222,7 +216,6 @@ contract SmartDeposit is Ownable {
             propertyId,
             msg.sender,
             _name,
-            _depositAmount,
             PropertyStatus.NOT_RENTED
         );
 
@@ -233,10 +226,12 @@ contract SmartDeposit is Ownable {
     /// @dev Only the landlord can create a deposit for their property
     /// @param _propertyId ID of the property for which to create the deposit
     /// @param _depositCode Unique code that will be required for tenant payment
+    /// @param _depositAmount Amount required for the deposit in wei
     /// @return depositId The ID of the newly created deposit
     function createDeposit(
         uint256 _propertyId,
-        string memory _depositCode
+        string memory _depositCode,
+        uint256 _depositAmount
     )
         external
         propertyExists(_propertyId)
@@ -262,14 +257,13 @@ contract SmartDeposit is Ownable {
 
         depositCounter++;
         uint256 depositId = depositCounter;
-        uint256 depositAmount = properties[_propertyId].depositAmount;
 
         deposits[depositId] = Deposit({
             id: depositId,
             propertyId: _propertyId,
             depositCode: _depositCode,
             tenant: address(0),
-            amount: depositAmount,
+            amount: _depositAmount,
             finalAmount: 0,
             creationDate: block.timestamp,
             paymentDate: 0,
@@ -286,7 +280,7 @@ contract SmartDeposit is Ownable {
         emit DepositCreated(
             depositId,
             _propertyId,
-            depositAmount,
+            _depositAmount,
             _depositCode
         );
         emit PropertyStatusChanged(_propertyId, PropertyStatus.NOT_RENTED);
@@ -326,7 +320,7 @@ contract SmartDeposit is Ownable {
 
     /// @notice Refunds a paid deposit
     /// @dev Only the landlord can refund a deposit
-    /// @param _depositId ID of the deposit to refund   
+    /// @param _depositId ID of the deposit to refund
     function refundDeposit(
         uint256 _depositId
     )
@@ -482,21 +476,14 @@ contract SmartDeposit is Ownable {
 
     /// @notice Gets details of a specific property
     /// @param _propertyId ID of the property to query
-    /// @return Tuple containing all property details (id, landlord, name, location, depositAmount, status)
+    /// @return Tuple containing all property details (id, landlord, name, location, status)
     function getPropertyDetails(
         uint256 _propertyId
     )
         external
         view
         propertyExists(_propertyId)
-        returns (
-            uint256,
-            address,
-            string memory,
-            string memory,
-            uint256,
-            PropertyStatus
-        )
+        returns (uint256, address, string memory, string memory, PropertyStatus)
     {
         Property storage property = properties[_propertyId];
         return (
@@ -504,7 +491,6 @@ contract SmartDeposit is Ownable {
             property.landlord,
             property.name,
             property.location,
-            property.depositAmount,
             property.status
         );
     }

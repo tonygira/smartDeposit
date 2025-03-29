@@ -148,14 +148,13 @@ export default function Dashboard() {
       const properties = propertiesData
         .map((result, index) => {
           if (result.status === "success" && result.result) {
-            const [id, landlord, name, location, depositAmount, status] = result.result as [
+            const [id, landlord, name, location, status] = result.result as [
               bigint,
               string,
               string,
               string,
-              bigint,
               number
-            ]
+            ];
 
             // Compter les fichiers pour cette propriété si disponibles
             let filesCount = 0
@@ -168,15 +167,13 @@ export default function Dashboard() {
               landlord,
               name,
               location,
-              depositAmount: formatEther(depositAmount),
               status: getPropertyStatusText(status),
               statusCode: Number(status),
               filesCount
-            }
+            };
           }
           return null
         })
-        .filter(Boolean)
 
       setLandlordProperties(properties)
     }
@@ -304,10 +301,7 @@ export default function Dashboard() {
                             <Home className="h-4 w-4 mr-1 text-gray-600" />
                             Détails du bien
                           </p>
-                          <p className="mt-1 ml-5 text-sm">
-                            Caution: {property.depositAmount} ETH
-                          </p>
-                          <p className="mt-1 ml-5 flex items-center text-sm">
+                          <div className="mt-1 ml-5 flex items-center text-sm">
                             Statut:{" "}
                             <span
                               className={`ml-1 font-medium ${property.statusCode === 2
@@ -319,8 +313,8 @@ export default function Dashboard() {
                             >
                               {property.status}
                             </span>
-                          </p>
-                          <p className="mt-1 ml-5 flex items-center text-sm">
+                          </div>
+                          <div className="mt-1 ml-5 flex items-center text-sm">
                             {property.filesCount > 0 ? (
                               <div className="flex items-center">
                                 <FileText className="h-4 w-4 mr-1 text-green-500" />
@@ -332,7 +326,7 @@ export default function Dashboard() {
                                 <span className="text-gray-500">Aucun document</span>
                               </div>
                             )}
-                          </p>
+                          </div>
                         </div>
 
                         <div>
