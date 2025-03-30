@@ -332,6 +332,19 @@ export const SMART_DEPOSIT_ABI = [
     "type": "event"
   },
   {
+    "inputs": [],
+    "name": "MAX_PROPERTIES_PER_LANDLORD",
+    "outputs": [
+      {
+        "internalType": "uint16",
+        "name": "",
+        "type": "uint16"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "uint256",
@@ -590,9 +603,9 @@ export const SMART_DEPOSIT_ABI = [
     "name": "getLandlordProperties",
     "outputs": [
       {
-        "internalType": "uint256[]",
+        "internalType": "uint16[]",
         "name": "",
-        "type": "uint256[]"
+        "type": "uint16[]"
       }
     ],
     "stateMutability": "view",

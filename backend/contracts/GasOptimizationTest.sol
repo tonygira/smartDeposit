@@ -6,13 +6,22 @@ contract GasOptimizationTest {
     mapping(address => uint256[]) private landlordProperties;
     
     // Approche 2: uint32[1000] tableau fixe
-    struct LimitedArray {
+    struct LimitedArray32 {
         uint32[1000] properties;
         uint32 count;
     }
-    mapping(address => LimitedArray) private landlordPropertiesFixed;
+
+    // Approche 3: uint256[1000] tableau fixe
+    struct LimitedArray256 {
+        uint256[1000] properties;
+        uint256 count;
+    }
+
+    mapping(address => LimitedArray32) private landlordPropertiesFixed32;
+    mapping(address => LimitedArray256) private landlordPropertiesFixed256;
     
-    // Approche 3: bytes32[] avec encodage (10 IDs par slot)
+
+    // Approche 4: bytes32[] avec encodage (10 IDs par slot)
     struct PropertyStorage {
         bytes32[] packedProperties;
         uint256 count;
@@ -25,8 +34,15 @@ contract GasOptimizationTest {
     }
     
     // Ajout pour uint32[1000] fixe
-    function addPropertyFixed(uint32 _propertyId) external {
-        LimitedArray storage lp = landlordPropertiesFixed[msg.sender];
+    function addPropertyFixed32(uint32 _propertyId) external {
+        LimitedArray32 storage lp = landlordPropertiesFixed32[msg.sender];
+        require(lp.count < 1000, "Max properties reached");
+        lp.properties[lp.count] = _propertyId;
+        lp.count++;
+    }
+
+    function addPropertyFixed256(uint256 _propertyId) external {
+        LimitedArray256 storage lp = landlordPropertiesFixed256[msg.sender];
         require(lp.count < 1000, "Max properties reached");
         lp.properties[lp.count] = _propertyId;
         lp.count++;
@@ -51,15 +67,25 @@ contract GasOptimizationTest {
     }
     
     // Lecture pour uint32[1000] fixe
-    function getPropertiesFixed() external view returns (uint32[] memory) {
-        LimitedArray storage lp = landlordPropertiesFixed[msg.sender];
+    function getPropertiesFixed32() external view returns (uint32[] memory) {
+        LimitedArray32 storage lp = landlordPropertiesFixed32[msg.sender];
         uint32[] memory result = new uint32[](lp.count);
         for (uint32 i = 0; i < lp.count; i++) {
             result[i] = lp.properties[i];
         }
         return result;
     }
-    
+
+    // Lecture pour uint256[1000] fixe
+    function getPropertiesFixed256() external view returns (uint256[] memory) {
+        LimitedArray256 storage lp = landlordPropertiesFixed256[msg.sender];
+        uint256[] memory result = new uint256[](lp.count);
+        for (uint256 i = 0; i < lp.count; i++) {
+            result[i] = lp.properties[i];
+        }
+        return result;
+    }
+
     // Lecture pour bytes32[] avec encodage
     function getPropertiesPacked() external view returns (uint24[] memory) {
         PropertyStorage storage ps = landlordPropertiesPacked[msg.sender];

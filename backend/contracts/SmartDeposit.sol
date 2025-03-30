@@ -74,12 +74,22 @@ contract SmartDeposit is Ownable {
     uint256 public propertyCounter;
     /// @notice Counter for generating unique deposit IDs
     uint256 public depositCounter;
+
+    /// @dev This constant is used to limit the number of properties a landlord can have
+    uint16 public constant MAX_PROPERTIES_PER_LANDLORD = 1000;
+
+    /// @dev This struct is an optimized approach to limit the number of properties a landlord can have
+    struct LimitedProperty {
+        uint16[MAX_PROPERTIES_PER_LANDLORD] properties;
+        uint16 count;
+    }
+
     /// @notice Maps property IDs to Property structs
     mapping(uint256 => Property) private properties;
     /// @notice Maps deposit IDs to Deposit structs
     mapping(uint256 => Deposit) private deposits;
     /// @notice Maps landlord addresses to their property IDs
-    mapping(address => uint256[]) private landlordProperties;
+    mapping(address => LimitedProperty) private landlordProperties;
     /// @notice Maps tenant addresses to their deposit IDs
     mapping(address => uint256[]) private tenantDeposits;
     /// @notice Maps property IDs to all deposit IDs (historique)
@@ -210,7 +220,14 @@ contract SmartDeposit is Ownable {
             status: PropertyStatus.NOT_RENTED
         });
 
-        landlordProperties[msg.sender].push(propertyId);
+        // Utilise une structure LimitedProperty au lieu d'un tableau dynamique
+        LimitedProperty storage landlordProps = landlordProperties[msg.sender];
+        require(
+            landlordProps.count < MAX_PROPERTIES_PER_LANDLORD,
+            "Max properties limit reached"
+        );
+        landlordProps.properties[landlordProps.count] = uint16(propertyId);
+        landlordProps.count++;
 
         emit PropertyCreated(
             propertyId,
@@ -438,13 +455,40 @@ contract SmartDeposit is Ownable {
     }
 
     // View Functions
+    /// @notice Helper function to find property index in landlord properties array
+    /// @dev Returns MAX_PROPERTIES_PER_LANDLORD if property not found
+    /// @param _landlord Address of the landlord
+    /// @param _propertyId ID of the property to find
+    /// @return The index of the property in the landlord's array
+    function _findPropertyIndex(
+        address _landlord,
+        uint16 _propertyId
+    ) private view returns (uint16) {
+        LimitedProperty storage landlordProps = landlordProperties[_landlord];
+
+        for (uint16 i = 0; i < landlordProps.count; i++) {
+            if (landlordProps.properties[i] == _propertyId) {
+                return i;
+            }
+        }
+
+        return MAX_PROPERTIES_PER_LANDLORD; // Property not found
+    }
+
     /// @notice Gets all properties owned by a landlord
     /// @param _landlord Address of the landlord
     /// @return Array of property IDs owned by the landlord
     function getLandlordProperties(
         address _landlord
-    ) external view returns (uint256[] memory) {
-        return landlordProperties[_landlord];
+    ) external view returns (uint16[] memory) {
+        LimitedProperty storage landlordProps = landlordProperties[_landlord];
+        uint16[] memory result = new uint16[](landlordProps.count);
+
+        for (uint16 i = 0; i < landlordProps.count; i++) {
+            result[i] = landlordProps.properties[i];
+        }
+
+        return result;
     }
 
     /// @notice Gets all deposits associated with a tenant
