@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi"
-import { formatEther } from "viem"
+import { formatEther, parseEther } from "viem"
 import { QRCodeSVG } from "qrcode.react"
 import { Header } from "@/components/header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
@@ -28,8 +28,11 @@ export default function PropertyQRCode() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<string | null>(null)
   const [isExistingCode, setIsExistingCode] = useState(false)
-
   const searchParams = useSearchParams()
+  const presetAmount = searchParams.get('amount')
+  const [depositAmountValue, setDepositAmountValue] = useState(presetAmount || "0.1")
+  const [copySuccess, setCopySuccess] = useState(false)
+
   const useExistingCode = searchParams.get('useExistingCode') === 'true'
 
   const propertyId = Number(params.id)
@@ -51,7 +54,7 @@ export default function PropertyQRCode() {
   const { data: depositData } = useReadContract({
     address: CONTRACT_ADDRESS as `0x${string}`,
     abi: SMART_DEPOSIT_ABI,
-    functionName: "getDepositDetails",
+    functionName: "getDeposit",
     args: [currentDepositId ? currentDepositId : BigInt(0)]
   });
 
@@ -74,29 +77,18 @@ export default function PropertyQRCode() {
     if (propertyId) {
       // Si un dépôt existe et que nous avons les détails du dépôt
       if (currentDepositId && Number(currentDepositId) > 0 && depositData) {
-        const depositDataArray = depositData as unknown as [
-          bigint,
-          bigint,
-          string,
-          bigint,
-          bigint,
-          bigint,
-          bigint,
-          bigint,
-          number,
-          string
-        ];
+        const deposit = depositData as any;
 
         // Si le statut est remboursé, partiellement remboursé ou retenu, il s'agit d'une caution
         // clôturée, donc nous devons générer un nouveau code
-        if (depositDataArray[8] === 3 || depositDataArray[8] === 4 || depositDataArray[8] === 5) { // REFUNDED, PARTIALLY_REFUNDED ou RETAINED
+        if (Number(deposit.status) === 3 || Number(deposit.status) === 4 || Number(deposit.status) === 5) { // REFUNDED, PARTIALLY_REFUNDED ou RETAINED
           const code = generateRandomCode(propertyId.toString());
           setUniqueCode(code);
           setIsExistingCode(false);
           return;
         }
 
-        const depositCode = depositDataArray[9];
+        const depositCode = deposit.depositCode;
         if (depositCode) {
           setUniqueCode(depositCode);
           setIsExistingCode(true);
@@ -126,7 +118,7 @@ export default function PropertyQRCode() {
   const { data: propertyData, isLoading: isPropertyLoading, refetch } = useReadContract({
     address: CONTRACT_ADDRESS as `0x${string}`,
     abi: SMART_DEPOSIT_ABI,
-    functionName: "getPropertyDetails",
+    functionName: "getProperty",
     args: [BigInt(propertyId)]
   })
 
@@ -140,28 +132,17 @@ export default function PropertyQRCode() {
   // Process property data
   useEffect(() => {
     if (propertyData) {
-      const [id, landlord, name, location, depositAmount, status] = propertyData as [
-        bigint,
-        string,
-        string,
-        string,
-        bigint,
-        number
-      ]
-
-      const propertyObj = {
-        id: Number(id),
-        landlord,
-        name,
-        location,
-        depositAmount: formatEther(depositAmount),
-        status: getPropertyStatusText(status)
+      setProperty(propertyData)
+      const userIsLandlord = address?.toLowerCase() === propertyData.landlord.toLowerCase();
+      setIsLandlord(userIsLandlord);
+      
+      // Vérification de sécurité : seul le propriétaire peut accéder à cette page
+      if (!userIsLandlord) {
+        // Rediriger vers la page principale des dépôts si l'utilisateur n'est pas le propriétaire
+        router.push('/deposits');
       }
-
-      setProperty(propertyObj)
-      setIsLandlord(address?.toLowerCase() === landlord.toLowerCase())
     }
-  }, [propertyData, address])
+  }, [propertyData, address, router])
 
   // Suivre l'état de la transaction
   useEffect(() => {
@@ -192,7 +173,13 @@ export default function PropertyQRCode() {
         setErrorMessage("La transaction a échoué. Veuillez réessayer.");
       }
     }
-  }, [isCreateDepositPending, isDepositConfirming, isDepositConfirmed, createDepositHash, depositError, writeError, propertyId, uniqueCode]);
+
+    if (transactionStatus === "success") {
+      setErrorMessage(null);
+      setTxHash(null);
+      refetch();
+    }
+  }, [isCreateDepositPending, isDepositConfirming, isDepositConfirmed, createDepositHash, depositError, writeError, propertyId, uniqueCode, transactionStatus, refetch]);
 
   const handleCreateDeposit = async () => {
     if (!property || !isLandlord || !uniqueCode) {
@@ -200,19 +187,23 @@ export default function PropertyQRCode() {
       return;
     }
 
+    // Utiliser le montant défini dans l'interface
+    const depositAmount = depositAmountValue;
+
     console.log("Tentative de création de dépôt:", {
       propertyId,
       uniqueCode,
+      depositAmount,
       currentDepositId: currentDepositId ? Number(currentDepositId) : 0,
     });
 
     // Vérifier si un dépôt existe déjà
     if (currentDepositId && Number(currentDepositId) > 0 && depositData) {
       // Si une caution existe, vérifier si elle est clôturée (remboursée, partiellement remboursée ou retenue)
-      const depositDataArray = depositData as unknown as [bigint, bigint, string, bigint, bigint, bigint, bigint, bigint, number, string];
-      console.log("État de la caution:", depositDataArray[8]);
+      const deposit = depositData as any;
+      console.log("État de la caution:", Number(deposit.status));
 
-      if (depositDataArray[8] === 3 || depositDataArray[8] === 4 || depositDataArray[8] === 5) {
+      if (Number(deposit.status) === 3 || Number(deposit.status) === 4 || Number(deposit.status) === 5) {
         // Caution clôturée, on peut en créer une nouvelle
         console.log("Caution clôturée, création d'une nouvelle caution autorisée");
       } else {
@@ -230,14 +221,15 @@ export default function PropertyQRCode() {
 
       console.log("Envoi de la transaction createDeposit avec:", {
         propertyId: BigInt(propertyId),
-        uniqueCode
+        uniqueCode,
+        depositAmount
       });
 
       writeDepositContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: SMART_DEPOSIT_ABI,
         functionName: "createDeposit",
-        args: [BigInt(propertyId), uniqueCode],
+        args: [BigInt(propertyId), uniqueCode, parseEther(depositAmount)],
       });
     } catch (error) {
       console.error("Erreur lors de la création de la caution:", error);
@@ -255,14 +247,13 @@ export default function PropertyQRCode() {
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(uniqueCode)
-    toast({
-      title: "Code copié !",
-      description: "Le code unique a été copié dans le presse-papier.",
-    })
+    setCopySuccess(true)
+    setTimeout(() => setCopySuccess(false), 3000) // Masquer le message après 3 secondes
   }
 
   const handleGoBack = () => {
-    router.back()
+    // Rediriger vers la page du bien avec le paramètre pour afficher la demande de caution
+    router.push(`/properties/${propertyId}?showDepositRequest=true`)
   }
 
   const handleContinueSuccess = () => {
@@ -277,8 +268,12 @@ export default function PropertyQRCode() {
     return (
       <div className="container py-10">
         <Header />
-        <div className="flex justify-center items-center min-h-[60vh]">
-          <p>Chargement des informations du bien...</p>
+        <div className="flex justify-center items-center flex-col min-h-[60vh]">
+          <p className="text-xl font-semibold mb-4">Chargement en cours</p>
+          <div className="flex items-center">
+            <Loader2 className="h-6 w-6 mr-2 animate-spin text-purple-600" />
+            <p>Vérification des informations du bien...</p>
+          </div>
         </div>
       </div>
     )
@@ -288,8 +283,17 @@ export default function PropertyQRCode() {
     return (
       <div className="container py-10">
         <Header />
-        <div className="flex justify-center items-center min-h-[60vh]">
-          <p>Bien non trouvé ou accès non autorisé.</p>
+        <div className="flex justify-center items-center flex-col min-h-[60vh]">
+          <p className="text-xl font-semibold mb-4">Accès non autorisé</p>
+          <p className="mb-6">Seul le propriétaire peut accéder à la génération du QR code pour la caution.</p>
+          <Button 
+            variant="outline" 
+            onClick={() => router.push('/deposits')}
+            className="flex items-center"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Retour aux cautions
+          </Button>
         </div>
       </div>
     )
@@ -298,12 +302,14 @@ export default function PropertyQRCode() {
   return (
     <div className="container py-10">
       <Header />
-      <div className="mb-8">
-        <Button variant="outline" onClick={handleGoBack} className="flex items-center">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Retour au bien
-        </Button>
-      </div>
+      {transactionStatus !== "success" && (
+        <div className="mb-8 mt-6">
+          <Button variant="outline" onClick={handleGoBack} className="flex items-center">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Retour
+          </Button>
+        </div>
+      )}
 
       {transactionStatus !== "idle" && (
         <Card className="mb-6">
@@ -407,6 +413,14 @@ export default function PropertyQRCode() {
                   <Copy className="h-5 w-5" />
                 </Button>
               </div>
+              {copySuccess && (
+                <Alert className="mt-2 bg-green-50 border-green-200">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <AlertDescription className="text-sm">
+                    Code copié dans le presse-papier !
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
 
             <div className="w-full max-w-md mb-4">
@@ -414,7 +428,11 @@ export default function PropertyQRCode() {
               <ul className="space-y-2">
                 <li><strong>Nom:</strong> {property.name}</li>
                 <li><strong>Emplacement:</strong> {property.location}</li>
-                <li><strong>Montant de la caution:</strong> {property.depositAmount} ETH</li>
+                <li className="flex items-center justify-between">
+                  <div>
+                    <strong>Montant de la caution:</strong> {depositAmountValue} ETH
+                  </div>
+                </li>
               </ul>
             </div>
 
@@ -422,12 +440,12 @@ export default function PropertyQRCode() {
               <Alert className="bg-amber-50 border-amber-200 mb-4">
                 <AlertCircle className="h-5 w-5 text-amber-500" />
                 <AlertTitle>
-                  {depositData && (depositData as any)[8] === 3 || (depositData as any)[8] === 4 || (depositData as any)[8] === 5
+                  {depositData && (Number((depositData as any).status) === 3 || Number((depositData as any).status) === 4 || Number((depositData as any).status) === 5)
                     ? "Nouvelle caution disponible"
                     : "Caution déjà existante"}
                 </AlertTitle>
                 <AlertDescription>
-                  {depositData && (depositData as any)[8] === 3 || (depositData as any)[8] === 4 || (depositData as any)[8] === 5
+                  {depositData && (Number((depositData as any).status) === 3 || Number((depositData as any).status) === 4 || Number((depositData as any).status) === 5)
                     ? "La caution précédente a été clôturée. Vous pouvez créer une nouvelle caution pour ce bien."
                     : isExistingCode
                       ? "Une caution a déjà été créée avec ce code. Le locataire peut l'utiliser pour verser sa caution."
@@ -438,14 +456,15 @@ export default function PropertyQRCode() {
             ) : null}
 
             {/* Bouton pour créer la caution */}
-            {transactionStatus === "idle" && (!currentDepositId || Number(currentDepositId) === 0 || (depositData && ((depositData as any)[8] === 3 || (depositData as any)[8] === 4 || (depositData as any)[8] === 5))) ? (
-              <Button
-                onClick={handleCreateDeposit}
-                className="w-full mt-4"
-                style={{ backgroundColor: "#7759F9" }}
-              >
-                Créer la caution avec ce code
-              </Button>
+            {transactionStatus === "idle" && (!currentDepositId || Number(currentDepositId) === 0 || (depositData && (Number((depositData as any).status) === 3 || Number((depositData as any).status) === 4 || Number((depositData as any).status) === 5))) ? (
+              <div className="flex justify-center mt-4">
+                <Button
+                  onClick={handleCreateDeposit}
+                  style={{ backgroundColor: "#7759F9" }}
+                >
+                  Créer la caution avec ce code
+                </Button>
+              </div>
             ) : null}
           </CardContent>
           <CardFooter>

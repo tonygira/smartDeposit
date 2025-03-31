@@ -23,7 +23,6 @@ export default function CreateProperty() {
 
   const [name, setName] = useState("")
   const [location, setLocation] = useState("")
-  const [depositAmount, setDepositAmount] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [transactionStatus, setTransactionStatus] = useState<"idle" | "pending" | "confirming" | "success" | "error">("idle")
   const [error, setError] = useState<string | null>(null)
@@ -58,7 +57,7 @@ export default function CreateProperty() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!name || !location || !depositAmount) {
+    if (!name || !location) {
       toast({
         title: "Erreur",
         description: "Veuillez remplir tous les champs",
@@ -76,7 +75,7 @@ export default function CreateProperty() {
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: SMART_DEPOSIT_ABI,
         functionName: "createProperty",
-        args: [name, location, parseEther(depositAmount)],
+        args: [name, location],
       })
     } catch (error) {
       console.error("Erreur lors de la création du bien:", error)
@@ -89,7 +88,6 @@ export default function CreateProperty() {
   const resetForm = () => {
     setName("")
     setLocation("")
-    setDepositAmount("")
     setTransactionStatus("idle")
     setError(null)
     setTxHash(null)
@@ -176,8 +174,8 @@ export default function CreateProperty() {
                     <Button onClick={() => router.push("/dashboard")} variant="default">
                       Retour au tableau de bord
                     </Button>
-                    <Button 
-                      onClick={resetForm} 
+                    <Button
+                      onClick={resetForm}
                       style={{ backgroundColor: "#7759F9", borderColor: "#7759F9" }}
                     >
                       Créer un autre bien
@@ -225,26 +223,13 @@ export default function CreateProperty() {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="depositAmount">Montant de la caution (ETH)</Label>
-                    <Input
-                      id="depositAmount"
-                      type="number"
-                      step="0.01"
-                      placeholder="0.1"
-                      value={depositAmount}
-                      onChange={(e) => setDepositAmount(e.target.value)}
-                      required
-                      disabled={isFormDisabled}
-                    />
-                  </div>
                   <div className="flex flex-col space-y-4">
                     <Button type="button" variant="outline" className="w-full" onClick={() => router.push("/dashboard")} disabled={isFormDisabled}>
                       Annuler
                     </Button>
-                    <Button 
-                      type="submit" 
-                      className="w-full" 
+                    <Button
+                      type="submit"
+                      className="w-full"
                       disabled={isFormDisabled}
                       style={!isFormDisabled ? { backgroundColor: "#7759F9", borderColor: "#7759F9" } : {}}
                     >

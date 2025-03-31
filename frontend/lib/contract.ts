@@ -304,12 +304,6 @@ export const SMART_DEPOSIT_ABI = [
       },
       {
         "indexed": false,
-        "internalType": "uint256",
-        "name": "depositAmount",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
         "internalType": "enum SmartDeposit.PropertyStatus",
         "name": "status",
         "type": "uint8"
@@ -376,6 +370,11 @@ export const SMART_DEPOSIT_ABI = [
         "internalType": "string",
         "name": "_depositCode",
         "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_depositAmount",
+        "type": "uint256"
       }
     ],
     "name": "createDeposit",
@@ -400,11 +399,6 @@ export const SMART_DEPOSIT_ABI = [
         "internalType": "string",
         "name": "_location",
         "type": "string"
-      },
-      {
-        "internalType": "uint256",
-        "name": "_depositAmount",
-        "type": "uint256"
       }
     ],
     "name": "createProperty",
@@ -506,70 +500,6 @@ export const SMART_DEPOSIT_ABI = [
     "inputs": [
       {
         "internalType": "uint256",
-        "name": "_depositId",
-        "type": "uint256"
-      }
-    ],
-    "name": "getDepositDetails",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      },
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      },
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      },
-      {
-        "internalType": "enum SmartDeposit.DepositStatus",
-        "name": "",
-        "type": "uint8"
-      },
-      {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
         "name": "_propertyId",
         "type": "uint256"
       }
@@ -642,11 +572,6 @@ export const SMART_DEPOSIT_ABI = [
             "type": "string"
           },
           {
-            "internalType": "uint256",
-            "name": "depositAmount",
-            "type": "uint256"
-          },
-          {
             "internalType": "enum SmartDeposit.PropertyStatus",
             "name": "status",
             "type": "uint8"
@@ -674,50 +599,6 @@ export const SMART_DEPOSIT_ABI = [
         "internalType": "uint256[]",
         "name": "",
         "type": "uint256[]"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "_propertyId",
-        "type": "uint256"
-      }
-    ],
-    "name": "getPropertyDetails",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      },
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      },
-      {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
-      },
-      {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
-      },
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      },
-      {
-        "internalType": "enum SmartDeposit.PropertyStatus",
-        "name": "",
-        "type": "uint8"
       }
     ],
     "stateMutability": "view",
@@ -764,6 +645,25 @@ export const SMART_DEPOSIT_ABI = [
         "internalType": "struct SmartDeposit.FileReference[]",
         "name": "",
         "type": "tuple[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_depositId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getPropertyIdFromDeposit",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",

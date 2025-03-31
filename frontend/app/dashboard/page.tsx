@@ -54,7 +54,7 @@ export default function Dashboard() {
     contracts: ((propertyIds as bigint[]) || []).map((id) => ({
       address: CONTRACT_ADDRESS as `0x${string}`,
       abi: SMART_DEPOSIT_ABI as any,
-      functionName: "getPropertyDetails",
+      functionName: "getProperty",
       args: [id],
     })),
   })
@@ -88,7 +88,7 @@ export default function Dashboard() {
   ).map((result) => ({
     address: CONTRACT_ADDRESS as `0x${string}`,
     abi: SMART_DEPOSIT_ABI as any,
-    functionName: "getDepositDetails",
+    functionName: "getDeposit",
     args: [result.result],
   })) || []
 
@@ -103,31 +103,20 @@ export default function Dashboard() {
       const details: Record<number, any> = {}
       depositDetailsData.forEach((result) => {
         if (result.status === "success" && result.result) {
-          const [id, propertyId, tenant, amount, finalAmount, creationDate, paymentDate, refundDate, status, depositCode] = result.result as [
-            bigint,
-            bigint,
-            string,
-            bigint,
-            bigint,
-            bigint,
-            bigint,
-            bigint,
-            number,
-            string
-          ]
-          details[Number(propertyId)] = {
-            id: Number(id),
-            propertyId: Number(propertyId),
-            tenant,
-            amount: formatEther(amount),
-            finalAmount: formatEther(finalAmount),
-            retainedAmount: formatEther(amount - finalAmount),
-            creationDate: Number(creationDate),
-            paymentDate: Number(paymentDate),
-            refundDate: Number(refundDate),
-            status: Number(status),
-            statusText: getDepositStatusText(Number(status)),
-            depositCode
+          const deposit = result.result;
+          details[Number(deposit.propertyId)] = {
+            id: Number(deposit.id),
+            propertyId: Number(deposit.propertyId),
+            tenant: deposit.tenant,
+            amount: formatEther(deposit.amount),
+            finalAmount: formatEther(deposit.finalAmount),
+            retainedAmount: formatEther(deposit.amount - deposit.finalAmount),
+            creationDate: Number(deposit.creationDate),
+            paymentDate: Number(deposit.paymentDate),
+            refundDate: Number(deposit.refundDate),
+            status: Number(deposit.status),
+            statusText: getDepositStatusText(Number(deposit.status)),
+            depositCode: deposit.depositCode
           }
         }
       })
@@ -148,14 +137,7 @@ export default function Dashboard() {
       const properties = propertiesData
         .map((result, index) => {
           if (result.status === "success" && result.result) {
-            const [id, landlord, name, location, depositAmount, status] = result.result as [
-              bigint,
-              string,
-              string,
-              string,
-              bigint,
-              number
-            ]
+            const property = result.result;
 
             // Compter les fichiers pour cette propriété si disponibles
             let filesCount = 0
@@ -164,15 +146,14 @@ export default function Dashboard() {
             }
 
             return {
-              id: Number(id),
-              landlord,
-              name,
-              location,
-              depositAmount: formatEther(depositAmount),
-              status: getPropertyStatusText(status),
-              statusCode: Number(status),
+              id: Number(property.id),
+              landlord: property.landlord,
+              name: property.name,
+              location: property.location,
+              status: getPropertyStatusText(property.status),
+              statusCode: Number(property.status),
               filesCount
-            }
+            };
           }
           return null
         })
@@ -284,97 +265,108 @@ export default function Dashboard() {
                 {landlordProperties.map((property) => {
                   const deposit = depositDetails[property.id];
                   return (
-                    <div
-                      key={property.id}
-                      className={`border rounded-lg p-4 ${deposit?.status === DepositStatus.DISPUTED ? 'bg-red-50' : ''}`}
-                    >
-                      <div className="flex justify-between items-center mb-2">
-                        <h3 className="font-semibold text-lg">{property.name}</h3>
+                    <div key={property.id} className="flex mb-4">
+                      {/* Card de la propriété */}
+                      <div className={`border rounded-lg p-4 flex-grow ${deposit?.status === DepositStatus.DISPUTED ? 'bg-red-50' : ''}`}>
+                        <div className="grid md:grid-cols-2 gap-4">
+                          {/* Colonne gauche - Infos du bien */}
+                          <div>
+                            <h3 className="font-semibold text-lg">{property.name}</h3>
+                            <p className="text-sm text-gray-500 mb-3">{property.location}</p>
+                            
+                            <p className="flex items-center text-sm font-medium mb-1 text-gray-700">
+                              <Home className="h-4 w-4 mr-1 text-gray-600" />
+                              Détails du bien
+                            </p>
+                            <div className="mt-1 ml-5 flex items-center text-sm">
+                              Statut:{" "}
+                              <span
+                                className={`ml-1 font-medium ${property.statusCode === 2
+                                  ? "text-yellow-500"
+                                  : property.statusCode === 1
+                                    ? "text-green-500"
+                                    : "text-blue-500"
+                                  }`}
+                              >
+                                {property.status}
+                              </span>
+                            </div>
+                            <div className="mt-1 ml-5 flex items-center text-sm">
+                              {property.filesCount > 0 ? (
+                                <div className="flex items-center">
+                                  <FileText className="h-4 w-4 mr-1 text-green-500" />
+                                  <span className="text-green-700">{property.filesCount} document{property.filesCount > 1 ? 's' : ''} ajouté{property.filesCount > 1 ? 's' : ''}</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center">
+                                  <File className="h-4 w-4 mr-1 text-gray-400" />
+                                  <span className="text-gray-500">Aucun document</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Colonne droite - Infos caution */}
+                          <div>
+                            <p className="flex items-center text-sm font-medium mb-1 text-gray-700">
+                              <Wallet className="h-4 w-4 mr-1 text-gray-600" />
+                              Caution associée
+                            </p>
+                            <div className="ml-5 mb-4">
+                              {deposit ? (
+                                <div>
+                                  <div className="flex items-center">
+                                    {getDepositStatusBadge(deposit.status)}
+                                  </div>
+                                  {(deposit.status === DepositStatus.PARTIALLY_REFUNDED ||
+                                    deposit.status === DepositStatus.RETAINED) && (
+                                      <div className="flex items-center mt-1 text-sm">
+                                        <Coins className="h-3.5 w-3.5 mr-1 text-gray-500" />
+                                        <span>Montant conservé: {deposit.retainedAmount} ETH</span>
+                                      </div>
+                                    )}
+                                </div>
+                              ) : (
+                                <div className="flex items-center">
+                                  <Ban className="h-4 w-4 mr-1 text-gray-400" />
+                                  <span className="text-gray-500">Aucune</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {deposit && (
+                              <div>
+                                <p className="flex items-center text-sm font-medium mb-1 text-gray-700">
+                                  <Calendar className="h-4 w-4 mr-1 text-gray-600" />
+                                  Dates importantes
+                                </p>
+                                <div className="flex items-start ml-5 text-sm">
+                                  <div className="flex flex-col">
+                                    <span className="text-xs text-gray-600">Création: {formatDate(deposit.creationDate)}</span>
+                                    {deposit.status >= DepositStatus.PAID && deposit.paymentDate > 0 && (
+                                      <span className="text-xs text-gray-600">Paiement: {formatDate(deposit.paymentDate)}</span>
+                                    )}
+                                    {(deposit.status === DepositStatus.REFUNDED ||
+                                      deposit.status === DepositStatus.PARTIALLY_REFUNDED ||
+                                      deposit.status === DepositStatus.RETAINED) &&
+                                      deposit.refundDate > 0 && (
+                                        <span className="text-xs text-gray-600">Remboursement: {formatDate(deposit.refundDate)}</span>
+                                      )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Bouton Actions en dehors de la carte */}
+                      <div className="ml-4 flex-shrink-0">
                         <Link href={`/properties/${property.id}`}>
                           <Button variant="outline" size="sm">
                             Actions
                           </Button>
                         </Link>
-                      </div>
-                      <p className="text-sm text-gray-500">{property.location}</p>
-
-                      <div className="grid md:grid-cols-2 gap-4 mt-3">
-                        <div>
-                          <p className="flex items-center text-sm font-medium mb-1 text-gray-700">
-                            <Home className="h-4 w-4 mr-1 text-gray-600" />
-                            Détails du bien
-                          </p>
-                          <p className="mt-1 ml-5 text-sm">
-                            Caution: {property.depositAmount} ETH
-                          </p>
-                          <p className="mt-1 ml-5 flex items-center text-sm">
-                            Statut:{" "}
-                            <span
-                              className={`ml-1 font-medium ${property.statusCode === 2
-                                ? "text-yellow-500"
-                                : property.statusCode === 1
-                                  ? "text-green-500"
-                                  : "text-blue-500"
-                                }`}
-                            >
-                              {property.status}
-                            </span>
-                          </p>
-                          <p className="mt-1 ml-5 flex items-center text-sm">
-                            {property.filesCount > 0 ? (
-                              <div className="flex items-center">
-                                <FileText className="h-4 w-4 mr-1 text-green-500" />
-                                <span className="text-green-700">{property.filesCount} document{property.filesCount > 1 ? 's' : ''} ajouté{property.filesCount > 1 ? 's' : ''}</span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center">
-                                <File className="h-4 w-4 mr-1 text-gray-400" />
-                                <span className="text-gray-500">Aucun document</span>
-                              </div>
-                            )}
-                          </p>
-                        </div>
-
-                        <div>
-                          <p className="flex items-center text-sm font-medium mb-1 text-gray-700">
-                            <Wallet className="h-4 w-4 mr-1 text-gray-600" />
-                            État de la caution
-                          </p>
-                          {deposit ? (
-                            <div className="ml-5">
-                              <div className="flex items-center mt-1 text-sm">
-                                {getDepositStatusBadge(deposit.status)}
-                              </div>
-                              {(deposit.status === DepositStatus.PARTIALLY_REFUNDED ||
-                                deposit.status === DepositStatus.RETAINED) && (
-                                  <div className="flex items-center mt-1.5 text-sm">
-                                    <Coins className="h-3.5 w-3.5 mr-1 text-red-500" />
-                                    <span>Montant conservé: {deposit.retainedAmount} ETH</span>
-                                  </div>
-                                )}
-                              <div className="flex items-start mt-1.5 text-sm">
-                                <Calendar className="h-3.5 w-3.5 mr-1 text-gray-500 mt-0.5" />
-                                <div className="flex flex-col">
-                                  <span className="text-xs text-gray-600">Création: {formatDate(deposit.creationDate)}</span>
-                                  {deposit.status >= DepositStatus.PAID && deposit.paymentDate > 0 && (
-                                    <span className="text-xs text-gray-600">Paiement: {formatDate(deposit.paymentDate)}</span>
-                                  )}
-                                  {(deposit.status === DepositStatus.REFUNDED ||
-                                    deposit.status === DepositStatus.PARTIALLY_REFUNDED ||
-                                    deposit.status === DepositStatus.RETAINED) &&
-                                    deposit.refundDate > 0 && (
-                                      <span className="text-xs text-gray-600">Remboursement: {formatDate(deposit.refundDate)}</span>
-                                    )}
-                                </div>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center ml-5 mt-1 text-sm">
-                              <Ban className="h-4 w-4 mr-1 text-gray-400" />
-                              <span className="text-gray-500">Caution non créée</span>
-                            </div>
-                          )}
-                        </div>
                       </div>
                     </div>
                   )

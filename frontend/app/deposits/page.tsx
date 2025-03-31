@@ -10,7 +10,83 @@ import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getDepositStatusText, DepositStatu
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
-import { QrCode, Wallet, Calendar, Home, MapPin, User, ArrowDownCircle, ArrowUpCircle, AlertTriangle, Coins, CheckCircle, XCircle, Clock } from "lucide-react"
+import { QrCode, Wallet, Calendar, Home, MapPin, User, ArrowDownCircle, ArrowUpCircle, AlertTriangle, Coins, CheckCircle, XCircle, Clock, Loader2 } from "lucide-react"
+
+// Composant pour afficher les détails d'une propriété même si elle n'est pas dans l'état properties
+const PropertyDetails = ({ propertyId, existingProperty }: { propertyId: number, existingProperty: any }) => {
+  // Si on a déjà les données dans l'état properties, on les utilise
+  if (existingProperty) {
+    return (
+      <div className="mt-2 grid md:grid-cols-2 gap-4">
+        <div>
+          <div className="flex items-center text-primary">
+            <Home className="h-4 w-4 mr-1.5" />
+            <span className="font-medium">{existingProperty.name}</span>
+          </div>
+          <div className="flex items-center mt-1 text-gray-500">
+            <MapPin className="h-4 w-4 mr-1.5" />
+            <span>{existingProperty.location}</span>
+          </div>
+          <div className="flex items-center mt-1 text-gray-500">
+            <User className="h-4 w-4 mr-1.5" />
+            <span className="text-xs">{existingProperty.landlord.slice(0, 6)}...{existingProperty.landlord.slice(-4)}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Sinon, on récupère les données directement depuis le contrat
+  const { data: propertyData, isLoading: isPropertyLoading } = useReadContract({
+    address: CONTRACT_ADDRESS as `0x${string}`,
+    abi: SMART_DEPOSIT_ABI,
+    functionName: "getProperty",
+    args: [BigInt(propertyId)]
+  });
+
+  if (isPropertyLoading) {
+    return (
+      <div className="mt-2 flex items-center space-x-2">
+        <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+        <span className="text-sm text-gray-500">Chargement des détails du bien...</span>
+      </div>
+    );
+  }
+
+  if (!propertyData) {
+    return (
+      <div className="mt-2 space-y-2">
+        <div className="flex items-center">
+          <Home className="h-4 w-4 mr-1.5 text-gray-400" />
+          <span className="text-sm text-gray-600">Bien #{propertyId}</span>
+        </div>
+        <div className="flex items-center">
+          <MapPin className="h-4 w-4 mr-1.5 text-gray-400" />
+          <span className="text-sm text-gray-500">Adresse non disponible</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 grid md:grid-cols-2 gap-4">
+      <div>
+        <div className="flex items-center text-primary">
+          <Home className="h-4 w-4 mr-1.5" />
+          <span className="font-medium">{propertyData.name}</span>
+        </div>
+        <div className="flex items-center mt-1 text-gray-500">
+          <MapPin className="h-4 w-4 mr-1.5" />
+          <span>{propertyData.location}</span>
+        </div>
+        <div className="flex items-center mt-1 text-gray-500">
+          <User className="h-4 w-4 mr-1.5" />
+          <span className="text-xs">{propertyData.landlord.slice(0, 6)}...{propertyData.landlord.slice(-4)}</span>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function Deposits() {
   const { address, isConnected } = useAccount()
@@ -44,50 +120,47 @@ export default function Deposits() {
     contracts: ((depositIds as bigint[]) || []).map((id) => ({
       address: CONTRACT_ADDRESS as `0x${string}`,
       abi: SMART_DEPOSIT_ABI as any,
-      functionName: "getDepositDetails",
+      functionName: "getDeposit",
       args: [id],
     })),
   })
 
-  // Process deposit data and extract property IDs
+  // Fetch property IDs for each deposit
+  const { data: propertyIdsData } = useReadContracts({
+    contracts: ((depositIds as bigint[]) || []).map((id) => ({
+      address: CONTRACT_ADDRESS as `0x${string}`,
+      abi: SMART_DEPOSIT_ABI as any,
+      functionName: "getPropertyIdFromDeposit",
+      args: [id],
+    })),
+  })
+
+  // Process deposit data
   useEffect(() => {
     if (depositsData) {
       const fetchedDeposits = depositsData
         .map((result, index) => {
           if (result.status === "success" && result.result) {
-            const resultArray = result.result as any[];
-
             try {
-              const [id, propertyId, tenant, amount, finalAmount, creationDate, paymentDate, refundDate, status, depositCode] = resultArray as [
-                bigint,
-                bigint,
-                string,
-                bigint,
-                bigint,
-                bigint,
-                bigint,
-                bigint,
-                number,
-                string
-              ]
+              const deposit = result.result as any;
 
               return {
-                id: Number(id),
-                propertyId: Number(propertyId),
-                tenant,
-                amount: formatEther(amount),
-                finalAmount: formatEther(finalAmount),
-                retainedAmount: formatEther(amount - finalAmount),
-                creationDate: Number(creationDate),
-                paymentDate: Number(paymentDate),
-                refundDate: Number(refundDate),
-                status: getDepositStatusText(Number(status)),
-                statusCode: Number(status),
-                depositCode
+                id: Number(deposit.id),
+                propertyId: Number(deposit.propertyId),
+                tenant: deposit.tenant,
+                amount: formatEther(deposit.amount),
+                finalAmount: formatEther(deposit.finalAmount),
+                retainedAmount: formatEther(deposit.amount - deposit.finalAmount),
+                creationDate: Number(deposit.creationDate),
+                paymentDate: Number(deposit.paymentDate),
+                refundDate: Number(deposit.refundDate),
+                status: getDepositStatusText(Number(deposit.status)),
+                statusCode: Number(deposit.status),
+                depositCode: deposit.depositCode
               }
             } catch (error) {
               console.error(`Erreur lors du traitement de la caution #${index}:`, error);
-              console.error("Structure des données reçues:", resultArray);
+              console.error("Structure des données reçues:", result.result);
               return null;
             }
           }
@@ -96,19 +169,27 @@ export default function Deposits() {
         .filter(Boolean)
 
       setDeposits(fetchedDeposits)
-
-      // Get unique property IDs to fetch property details
-      const uniquePropertyIds = [...new Set(fetchedDeposits.filter(d => d !== null).map((d) => d.propertyId))]
-      setPropertyIds(uniquePropertyIds)
     }
   }, [depositsData])
 
-  // Fetch property details (separate from deposit processing)
+  // Get unique property IDs from property IDs data
+  useEffect(() => {
+    if (propertyIdsData) {
+      const uniquePropertyIds = propertyIdsData
+        .filter(result => result.status === "success" && result.result)
+        .map(result => Number(result.result))
+        .filter((value, index, self) => self.indexOf(value) === index); // Unique values only
+      
+      setPropertyIds(uniquePropertyIds);
+    }
+  }, [propertyIdsData]);
+
+  // Fetch property details
   const { data: propertiesData } = useReadContracts({
     contracts: propertyIds.map((propertyId) => ({
       address: CONTRACT_ADDRESS as `0x${string}`,
       abi: SMART_DEPOSIT_ABI as any,
-      functionName: "getPropertyDetails",
+      functionName: "getProperty",
       args: [BigInt(propertyId)],
     })),
   });
@@ -119,24 +200,16 @@ export default function Deposits() {
       const processedProperties = propertiesData
         .map((result, index) => {
           if (result.status === "success" && result.result) {
-            const [id, landlord, name, location, depositAmount, status] = result.result as [
-              bigint,
-              string,
-              string,
-              string,
-              bigint,
-              number,
-            ];
-
+            const property = result.result;
+            
             return {
               propertyId: propertyIds[index],
               data: {
-                id: Number(id),
-                landlord,
-                name,
-                location,
-                depositAmount: formatEther(depositAmount),
-                status: getPropertyStatusText(status),
+                id: Number(property.id),
+                landlord: property.landlord,
+                name: property.name,
+                location: property.location,
+                status: getPropertyStatusText(property.status),
               },
             };
           }
@@ -165,7 +238,7 @@ export default function Deposits() {
         )
       case DepositStatus.PAID:
         return (
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 flex items-center">
+          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 flex items-center">
             <CheckCircle className="h-3.5 w-3.5 mr-1" />
             Payée
           </Badge>
@@ -179,7 +252,7 @@ export default function Deposits() {
         )
       case DepositStatus.REFUNDED:
         return (
-          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 flex items-center">
+          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 flex items-center">
             <ArrowUpCircle className="h-3.5 w-3.5 mr-1" />
             Remboursée
           </Badge>
@@ -273,43 +346,8 @@ export default function Deposits() {
                       {getDepositStatusBadge(deposit.statusCode)}
                     </div>
                     <CardDescription>
-                      {property ? (
-                        <div className="mt-2 grid md:grid-cols-2 gap-4">
-                          <div>
-                            <div className="flex items-center text-primary">
-                              <Home className="h-4 w-4 mr-1.5" />
-                              <span className="font-medium">{property.name}</span>
-                            </div>
-                            <div className="flex items-center mt-1 text-gray-500">
-                              <MapPin className="h-4 w-4 mr-1.5" />
-                              <span>{property.location}</span>
-                            </div>
-                            <div className="flex items-center mt-1 text-gray-500">
-                              <User className="h-4 w-4 mr-1.5" />
-                              <span className="text-xs">{property.landlord.slice(0, 6)}...{property.landlord.slice(-4)}</span>
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex items-center">
-                              <Calendar className="h-4 w-4 mr-1.5 text-gray-500" />
-                              <div>
-                                <span className="text-xs text-gray-500">Création: {formatDate(deposit.creationDate)}</span>
-                                {deposit.statusCode !== DepositStatus.PENDING && deposit.paymentDate > 0 && (
-                                  <span className="text-xs text-gray-500 block">Versement: {formatDate(deposit.paymentDate)}</span>
-                                )}
-                                {deposit.refundDate > 0 && (
-                                  <span className="text-xs text-gray-500 block">Remboursement: {formatDate(deposit.refundDate)}</span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center mt-2">
-                          <Home className="h-4 w-4 mr-1.5 text-gray-400" />
-                          <span>Identifiant du bien : {deposit.propertyId}</span>
-                        </div>
-                      )}
+                      <PropertyDetails propertyId={deposit.propertyId} existingProperty={property} />
+                      
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -334,14 +372,35 @@ export default function Deposits() {
                         {(deposit.statusCode === DepositStatus.REFUNDED ||
                           deposit.statusCode === DepositStatus.PARTIALLY_REFUNDED ||
                           deposit.statusCode === DepositStatus.RETAINED) && (
-                            <div className="flex items-center">
-                              <ArrowUpCircle className={`h-4 w-4 mr-2 ${deposit.statusCode === DepositStatus.REFUNDED ? 'text-green-500' : deposit.statusCode === DepositStatus.PARTIALLY_REFUNDED ? 'text-orange-500' : 'text-red-500'}`} />
+                            <div className="flex items-start">
+                              <ArrowUpCircle className={`h-4 w-4 mr-2 mt-1 ${deposit.statusCode === DepositStatus.REFUNDED ? 'text-green-500' : deposit.statusCode === DepositStatus.PARTIALLY_REFUNDED ? 'text-orange-500' : 'text-red-500'}`} />
                               <div>
-                                <p className="font-medium">Montant remboursé</p>
-                                <p className="text-lg font-semibold">{deposit.finalAmount} ETH</p>
-                                <p className="text-xs text-gray-500">
-                                  {(Number(deposit.finalAmount) / Number(deposit.amount) * 100).toFixed(1)}% de la caution
+                                <p className="font-medium">
+                                  {deposit.statusCode === DepositStatus.RETAINED ? "Montant retenu" : "Montant remboursé"}
                                 </p>
+                                <p className="text-lg font-semibold">
+                                  {deposit.statusCode === DepositStatus.RETAINED ? deposit.amount : deposit.finalAmount} ETH
+                                </p>
+                                
+                                {deposit.statusCode === DepositStatus.PARTIALLY_REFUNDED && (
+                                  <div className="flex items-center mt-1.5 text-red-500">
+                                    <XCircle className="h-3.5 w-3.5 mr-1" />
+                                    <span>{deposit.retainedAmount} ETH retenus</span>
+                                  </div>
+                                )}
+                                
+                                {deposit.statusCode !== DepositStatus.RETAINED && (
+                                  <p className="text-xs text-gray-500">
+                                    {(Number(deposit.finalAmount) / Number(deposit.amount) * 100).toFixed(1)}% de la caution
+                                  </p>
+                                )}
+                                
+                                {deposit.refundDate > 0 && (
+                                  <div className="flex items-center text-xs text-gray-500 mt-0.5">
+                                    <Calendar className="h-3 w-3 mr-1" />
+                                    <span>Le {formatDate(deposit.refundDate)}</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           )}
