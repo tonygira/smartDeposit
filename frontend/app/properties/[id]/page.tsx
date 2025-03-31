@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button"
 import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getPropertyStatusText, PropertyStatus, getDepositStatusText, DepositStatus } from "@/lib/contract"
 import { useToast } from "@/hooks/use-toast"
-import { MapPin, DollarSign, User, Loader2, CheckCircle, AlertCircle, ArrowLeft, Upload, AlertTriangle } from "lucide-react"
+import { MapPin, DollarSign, User, Loader2, CheckCircle, AlertCircle, ArrowLeft, Upload, AlertTriangle, Home, Wallet, Ban } from "lucide-react"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -64,10 +64,10 @@ export default function PropertyDetails() {
   });
 
   // Récupérer les détails du dépôt si l'ID existe
-  const { data: depositData } = useReadContract({
+  const { data: depositData, refetch: refetchDepositData } = useReadContract({
     address: CONTRACT_ADDRESS as `0x${string}`,
     abi: SMART_DEPOSIT_ABI,
-    functionName: "getDepositDetails",
+    functionName: "getDeposit",
     args: [currentDepositId ? currentDepositId : BigInt(0)],
   });
 
@@ -79,6 +79,8 @@ export default function PropertyDetails() {
     paymentDate?: number;
     refundDate?: number;
     amount?: string;
+    finalAmount?: string;
+    retainedAmount?: string;
   } | null>(null);
 
   // États d'erreur pour les uploads
@@ -92,38 +94,26 @@ export default function PropertyDetails() {
   // Mettre à jour les détails du dépôt quand les données sont reçues
   useEffect(() => {
     if (depositData) {
-      const depositDataArray = depositData as unknown as [
-        bigint,
-        bigint,
-        string,
-        bigint,
-        bigint,
-        bigint,
-        bigint,
-        bigint,
-        number,
-        string
-      ];
-
-      // L'index 3 contient le montant du dépôt
-      const amount = formatEther(depositDataArray[3]);
+      const deposit = depositData as any;
 
       setDepositDetails({
-        status: depositDataArray[8],
-        statusText: getDepositStatusText(depositDataArray[8]),
-        depositCode: depositDataArray[9],
-        creationDate: Number(depositDataArray[5]),
-        paymentDate: Number(depositDataArray[6]),
-        refundDate: Number(depositDataArray[7]),
-        amount
+        status: Number(deposit.status),
+        statusText: getDepositStatusText(Number(deposit.status)),
+        depositCode: deposit.depositCode,
+        creationDate: Number(deposit.creationDate),
+        paymentDate: Number(deposit.paymentDate),
+        refundDate: Number(deposit.refundDate),
+        amount: formatEther(deposit.amount),
+        finalAmount: formatEther(deposit.finalAmount),
+        retainedAmount: formatEther(deposit.amount - deposit.finalAmount)
       });
 
       // Mettre à jour le montant du dépôt
-      setDepositAmount(amount);
+      setDepositAmount(formatEther(deposit.amount));
 
       // Stocker le code de dépôt dans le localStorage pour une utilisation ultérieure
-      if (depositDataArray[9]) {
-        localStorage.setItem(`property_${propertyId}_deposit_code`, depositDataArray[9]);
+      if (deposit.depositCode) {
+        localStorage.setItem(`property_${propertyId}_deposit_code`, deposit.depositCode);
       }
     }
   }, [depositData, propertyId]);
@@ -138,52 +128,42 @@ export default function PropertyDetails() {
   const { data: propertyData, isLoading, refetch } = useReadContract({
     address: CONTRACT_ADDRESS as `0x${string}`,
     abi: SMART_DEPOSIT_ABI,
-    functionName: "getPropertyDetails",
+    functionName: "getProperty",
     args: [BigInt(propertyId)]
   })
 
   // Process property data
   useEffect(() => {
     if (propertyData) {
-      const [id, landlord, name, location, status] = propertyData as [
-        bigint,
-        string,
-        string,
-        string,
-        number
-      ]
-
-      const propertyObj = {
-        id: Number(id),
-        landlord,
-        name,
-        location,
-        status: getPropertyStatusText(status),
-        statusCode: status
-      }
-
-      setProperty(propertyObj)
-
-      // Vérifier si l'utilisateur est le propriétaire
-      const userIsLandlord = address?.toLowerCase() === landlord.toLowerCase();
-      setIsLandlord(userIsLandlord);
+      // Convertir le statut numérique en texte lisible
+      const propertyWithFormattedStatus = {
+        ...propertyData,
+        status: getPropertyStatusText(propertyData.status),
+        statusCode: Number(propertyData.status)
+      };
+      
+      setProperty(propertyWithFormattedStatus);
+      setIsLandlord(propertyData.landlord.toLowerCase() === address?.toLowerCase())
 
       // Vérifier si l'adresse est un locataire autorisé (a validé le code via deposit/code)
       const authorizedCode = localStorage.getItem(`property_${propertyId}_validated_code`);
       setIsAuthorizedTenant(!!authorizedCode);
 
       // Si l'utilisateur n'est ni le propriétaire ni un locataire ayant validé le code, rediriger
-      if (!userIsLandlord && !authorizedCode) {
+      if (!propertyData.landlord.toLowerCase() === address?.toLowerCase() && !authorizedCode) {
         router.push(`/deposits`);
       }
     }
-  }, [propertyData, address, propertyId, router])
+  }, [propertyData, address, router, propertyId])
 
   // Rafraîchir les données lorsque l'adresse change
   useEffect(() => {
     if (address) {
       // Rafraîchir toutes les données importantes
       refetch();
+      if (refetchDepositData) {
+        refetchDepositData();
+      }
       if (currentDepositId !== undefined) {
         // Réinitialiser les états si nécessaire
         setTransactionStatus("idle");
@@ -201,7 +181,7 @@ export default function PropertyDetails() {
         router.push(`/deposits`);
       }
     }
-  }, [address, refetch, propertyId, router, property, currentDepositId]);
+  }, [address, refetch, refetchDepositData, propertyId, router, property, currentDepositId]);
 
   // Make deposit
   const { data: depositHash, isPending: isDepositPending, writeContract: writeDepositContract } = useWriteContract()
@@ -407,7 +387,19 @@ export default function PropertyDetails() {
     setTxType(null);
     setError(null);
     setTxHash(null);
+    
+    // Rafraîchir toutes les données importantes
     refetch(); // Refresh property data
+    
+    // Rafraîchir les données du dépôt - important après une résolution de litige
+    if (refetchDepositData) {
+      refetchDepositData();
+    }
+    
+    // Si c'était une résolution de litige, on ferme le formulaire
+    if (txType === "resolve") {
+      setShowRefundForm(false);
+    }
   };
 
   // Function to handle redirect after deposit success
@@ -831,6 +823,18 @@ export default function PropertyDetails() {
     }
   };
 
+  // Effet pour rafraîchir automatiquement les données après une transaction réussie
+  useEffect(() => {
+    if (transactionStatus === "success") {
+      // Si c'était une résolution de litige, on rafraîchit les données du dépôt
+      if (txType === "resolve" || txType === "refund" || txType === "dispute") {
+        if (refetchDepositData) {
+          refetchDepositData();
+        }
+      }
+    }
+  }, [transactionStatus, txType, refetchDepositData]);
+
   // Utilisation d'une condition de garde au début du rendu
   if (!isConnected) {
     return (
@@ -1210,10 +1214,72 @@ export default function PropertyDetails() {
 
             <Card className={`md:col-span-3 ${property.status === "En litige" ? 'bg-red-50' : ''}`}>
               <CardHeader>
-                <CardTitle className="text-2xl">{property.name} - {property.status}</CardTitle>
-                <CardDescription className="flex items-center text-base">
-                  <MapPin className="h-4 w-4 mr-1" /> {property.location}
-                </CardDescription>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-2xl">{property.name} - {property.status}</CardTitle>
+                    <CardDescription className="flex items-center text-base">
+                      <MapPin className="h-4 w-4 mr-1" /> {property.location}
+                    </CardDescription>
+                  </div>
+                  <div>
+                    <p className="flex items-center text-sm font-medium mb-2 text-gray-700">
+                      <Wallet className="h-4 w-4 mr-1" />
+                      Caution associée
+                    </p>
+                    <div className="text-right">
+                      {typeof currentDepositId !== 'undefined' && depositDetails && Number(currentDepositId) > 0 ? (
+                        <>
+                          <div className="flex items-center justify-end mb-1">
+                            <span className={`font-medium ${
+                              depositDetails.status === DepositStatus.DISPUTED ? "text-red-500" :
+                              depositDetails.status === DepositStatus.PAID ? "text-green-500" :
+                              depositDetails.status === DepositStatus.PENDING ? "text-yellow-500" :
+                              "text-blue-500"
+                            }`}>
+                              {depositDetails.statusText}
+                            </span>
+                          </div>
+                          {depositDetails.amount && (
+                            <>
+                              {depositDetails.status === DepositStatus.PARTIALLY_REFUNDED ? (
+                                <div className="flex flex-col items-end text-sm">
+                                  <div className="flex items-center">
+                                    <span>Remboursé: {depositDetails.finalAmount} ETH</span>
+                                    <DollarSign className="h-4 w-4 ml-1 text-gray-400" />
+                                  </div>
+                                  <div className="flex items-center">
+                                    <span>Retenu: {depositDetails.retainedAmount} ETH</span>
+                                    <DollarSign className="h-4 w-4 ml-1 text-red-400" />
+                                  </div>
+                                </div>
+                              ) : depositDetails.status === DepositStatus.RETAINED ? (
+                                <div className="flex items-center justify-end text-sm">
+                                  <span>Retenu: {depositDetails.amount} ETH</span>
+                                  <DollarSign className="h-4 w-4 ml-1 text-red-400" />
+                                </div>
+                              ) : depositDetails.status === DepositStatus.REFUNDED ? (
+                                <div className="flex items-center justify-end text-sm">
+                                  <span>Remboursé: {depositDetails.amount} ETH</span>
+                                  <DollarSign className="h-4 w-4 ml-1 text-green-400" />
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-end text-sm">
+                                  <span>Montant: {depositDetails.amount} ETH</span>
+                                  <DollarSign className="h-4 w-4 ml-1 text-gray-400" />
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <div className="flex items-center justify-end">
+                          <span className="text-gray-500">Aucune</span>
+                          <Ban className="h-4 w-4 ml-1 text-gray-400" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center">
@@ -1317,8 +1383,8 @@ export default function PropertyDetails() {
                       )}
                     </div>
 
-                    {property.status === "Loué" && (
-                      <div className="flex space-x-3">
+                    {(property.status === "Loué" || property.statusCode === PropertyStatus.RENTED) && depositDetails && depositDetails.status === DepositStatus.PAID && (
+                      <div className="flex space-x-3 mt-3">
                         <Button
                           onClick={handleRefundDeposit}
                           size="sm"
@@ -1352,7 +1418,7 @@ export default function PropertyDetails() {
                       </div>
                     )}
 
-                    {property.status === "En litige" && (
+                    {(property.status === "En litige" || property.statusCode === PropertyStatus.DISPUTED) && (
                       <div className="space-y-4">
                         {!showRefundForm ? (
                           <div className="flex space-x-3">
@@ -1361,7 +1427,14 @@ export default function PropertyDetails() {
                               size="sm"
                               disabled={isFormDisabled}
                             >
-                              Régler le litige
+                              Régler à l'amiable
+                            </Button>
+                            <Button
+                              onClick={() => setShowKlerosMessage(true)}
+                              size="sm"
+                              style={{ backgroundColor: "#7759F9", color: "white" }}
+                            >
+                              Confier le dossier à Kleros
                             </Button>
                           </div>
                         ) : (
@@ -1393,13 +1466,6 @@ export default function PropertyDetails() {
                                 ) : (
                                   "Confirmer le remboursement"
                                 )}
-                              </Button>
-                              <Button
-                                onClick={() => setShowKlerosMessage(true)}
-                                size="sm"
-                                style={{ backgroundColor: "#7759F9", color: "white" }}
-                              >
-                                Confier le dossier à Kleros
                               </Button>
                               <Button
                                 onClick={() => setShowRefundForm(false)}

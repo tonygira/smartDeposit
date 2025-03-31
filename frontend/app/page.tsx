@@ -38,13 +38,13 @@ export default function Home() {
             <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
               {/* Card 1 */}
               <div className="bg-white dark:bg-gray-900 rounded-lg shadow-md overflow-hidden flex flex-col items-center">
-                <div className="w-full flex items-center justify-center p-3">
+                <div className="w-full flex items-center justify-center p-3" style={{ minHeight: "170px" }}>
                   <Image 
                     src="/1.png" 
                     alt="Sécurité" 
-                    width={120} 
-                    height={100}
-                    className="w-full h-auto object-contain" 
+                    width={205}
+                    height={287}
+                    className="w-[205px] h-[287px] object-cover" 
                   />
                 </div>
                 <div className="p-3 text-center">
@@ -55,7 +55,7 @@ export default function Home() {
               
               {/* Card 2 */}
               <div className="bg-white dark:bg-gray-900 rounded-lg shadow-md overflow-hidden flex flex-col items-center">
-                <div className="w-full flex items-center justify-center p-3">
+                <div className="w-full flex items-center justify-center p-3" style={{ minHeight: "170px" }}>
                   <Image 
                     src="/2.png" 
                     alt="Automatisation" 
@@ -74,7 +74,7 @@ export default function Home() {
               
               {/* Card 3 */}
               <div className="bg-white dark:bg-gray-900 rounded-lg shadow-md overflow-hidden flex flex-col items-center">
-                <div className="w-full flex items-center justify-center p-3">
+                <div className="w-full flex items-center justify-center p-3" style={{ minHeight: "170px" }}>
                   <Image 
                     src="/3.png" 
                     alt="Rendement" 
@@ -93,7 +93,7 @@ export default function Home() {
               
               {/* Card 4 */}
               <div className="bg-white dark:bg-gray-900 rounded-lg shadow-md overflow-hidden flex flex-col items-center">
-                <div className="w-full flex items-center justify-center p-3">
+                <div className="w-full flex items-center justify-center p-3" style={{ minHeight: "170px" }}>
                   <Image 
                     src="/4.png" 
                     alt="Service juste" 

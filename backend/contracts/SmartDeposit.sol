@@ -82,7 +82,7 @@ contract SmartDeposit is Ownable {
     mapping(address => uint256[]) private landlordProperties;
     /// @notice Maps tenant addresses to their deposit IDs
     mapping(address => uint256[]) private tenantDeposits;
-    /// @notice Maps property IDs to all deposit IDs (historique)
+    /// @notice Maps property IDs to all deposit IDs (record of all deposits)
     mapping(uint256 => uint256[]) private propertyDeposits;
     /// @notice Maps property IDs and file types to arrays of file references
     mapping(uint256 => mapping(FileType => FileReference[]))
@@ -271,11 +271,9 @@ contract SmartDeposit is Ownable {
             status: DepositStatus.PENDING
         });
 
-        // Mettre à jour la caution actuelle et conserver l'historique
-        properties[_propertyId].currentDepositId = depositId;
-        propertyDeposits[_propertyId].push(depositId);
-
-        properties[_propertyId].status = PropertyStatus.NOT_RENTED;
+        properties[_propertyId].currentDepositId = depositId; // update current deposit id
+        propertyDeposits[_propertyId].push(depositId); // add deposit id to property deposits (record of all deposits)
+        properties[_propertyId].status = PropertyStatus.NOT_RENTED; // update property status: property is ready to be rented again
 
         emit DepositCreated(
             depositId,
@@ -456,7 +454,7 @@ contract SmartDeposit is Ownable {
         return tenantDeposits[_tenant];
     }
 
-    /// @notice Gets all deposits associated with a property (historical)
+    /// @notice Gets all deposits associated with a property (record of all deposits)
     /// @param _propertyId ID of the property to query
     /// @return Array of deposit IDs associated with the property
     function getPropertyDeposits(
@@ -466,6 +464,7 @@ contract SmartDeposit is Ownable {
     }
 
     /// @notice Gets current active deposit ID for a property
+    /// @dev the onlyLandlord modifier cannot be used here because the future tenant will call this function before paying the deposit
     /// @param _propertyId ID of the property to query
     /// @return The ID of the current deposit (0 if none)
     function getDepositIdFromProperty(
@@ -474,62 +473,19 @@ contract SmartDeposit is Ownable {
         return properties[_propertyId].currentDepositId;
     }
 
-    /// @notice Gets details of a specific property
-    /// @param _propertyId ID of the property to query
-    /// @return Tuple containing all property details (id, landlord, name, location, status)
-    function getPropertyDetails(
-        uint256 _propertyId
-    )
-        external
-        view
-        propertyExists(_propertyId)
-        returns (uint256, address, string memory, string memory, PropertyStatus)
-    {
-        Property storage property = properties[_propertyId];
-        return (
-            property.id,
-            property.landlord,
-            property.name,
-            property.location,
-            property.status
-        );
-    }
-
-    /// @notice Gets details of a specific deposit
+    /// @notice Gets property ID from deposit ID
     /// @param _depositId ID of the deposit to query
-    /// @return Tuple containing all deposit details
-    function getDepositDetails(
+    /// @return The ID of the property associated with the deposit
+    function getPropertyIdFromDeposit(
         uint256 _depositId
     )
         external
         view
         depositExists(_depositId)
-        returns (
-            uint256,
-            uint256,
-            address,
-            uint256,
-            uint256,
-            uint256,
-            uint256,
-            uint256,
-            DepositStatus,
-            string memory
-        )
+        onlyTenant(_depositId)
+        returns (uint256)
     {
-        Deposit storage deposit = deposits[_depositId];
-        return (
-            deposit.id,
-            deposit.propertyId,
-            deposit.tenant,
-            deposit.amount,
-            deposit.finalAmount,
-            deposit.creationDate,
-            deposit.paymentDate,
-            deposit.refundDate,
-            deposit.status,
-            deposit.depositCode
-        );
+        return deposits[_depositId].propertyId;
     }
 
     /// @notice Gets details of a specific property

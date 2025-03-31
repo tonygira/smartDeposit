@@ -54,7 +54,7 @@ export default function PropertyQRCode() {
   const { data: depositData } = useReadContract({
     address: CONTRACT_ADDRESS as `0x${string}`,
     abi: SMART_DEPOSIT_ABI,
-    functionName: "getDepositDetails",
+    functionName: "getDeposit",
     args: [currentDepositId ? currentDepositId : BigInt(0)]
   });
 
@@ -77,29 +77,18 @@ export default function PropertyQRCode() {
     if (propertyId) {
       // Si un dépôt existe et que nous avons les détails du dépôt
       if (currentDepositId && Number(currentDepositId) > 0 && depositData) {
-        const depositDataArray = depositData as unknown as [
-          bigint,
-          bigint,
-          string,
-          bigint,
-          bigint,
-          bigint,
-          bigint,
-          bigint,
-          number,
-          string
-        ];
+        const deposit = depositData as any;
 
         // Si le statut est remboursé, partiellement remboursé ou retenu, il s'agit d'une caution
         // clôturée, donc nous devons générer un nouveau code
-        if (depositDataArray[8] === 3 || depositDataArray[8] === 4 || depositDataArray[8] === 5) { // REFUNDED, PARTIALLY_REFUNDED ou RETAINED
+        if (Number(deposit.status) === 3 || Number(deposit.status) === 4 || Number(deposit.status) === 5) { // REFUNDED, PARTIALLY_REFUNDED ou RETAINED
           const code = generateRandomCode(propertyId.toString());
           setUniqueCode(code);
           setIsExistingCode(false);
           return;
         }
 
-        const depositCode = depositDataArray[9];
+        const depositCode = deposit.depositCode;
         if (depositCode) {
           setUniqueCode(depositCode);
           setIsExistingCode(true);
@@ -129,7 +118,7 @@ export default function PropertyQRCode() {
   const { data: propertyData, isLoading: isPropertyLoading, refetch } = useReadContract({
     address: CONTRACT_ADDRESS as `0x${string}`,
     abi: SMART_DEPOSIT_ABI,
-    functionName: "getPropertyDetails",
+    functionName: "getProperty",
     args: [BigInt(propertyId)]
   })
 
@@ -143,24 +132,8 @@ export default function PropertyQRCode() {
   // Process property data
   useEffect(() => {
     if (propertyData) {
-      const [id, landlord, name, location, status] = propertyData as [
-        bigint,
-        string,
-        string,
-        string,
-        number
-      ]
-
-      const propertyObj = {
-        id: Number(id),
-        landlord,
-        name,
-        location,
-        status: getPropertyStatusText(status)
-      }
-
-      setProperty(propertyObj)
-      const userIsLandlord = address?.toLowerCase() === landlord.toLowerCase();
+      setProperty(propertyData)
+      const userIsLandlord = address?.toLowerCase() === propertyData.landlord.toLowerCase();
       setIsLandlord(userIsLandlord);
       
       // Vérification de sécurité : seul le propriétaire peut accéder à cette page
@@ -200,7 +173,13 @@ export default function PropertyQRCode() {
         setErrorMessage("La transaction a échoué. Veuillez réessayer.");
       }
     }
-  }, [isCreateDepositPending, isDepositConfirming, isDepositConfirmed, createDepositHash, depositError, writeError, propertyId, uniqueCode]);
+
+    if (transactionStatus === "success") {
+      setErrorMessage(null);
+      setTxHash(null);
+      refetch();
+    }
+  }, [isCreateDepositPending, isDepositConfirming, isDepositConfirmed, createDepositHash, depositError, writeError, propertyId, uniqueCode, transactionStatus, refetch]);
 
   const handleCreateDeposit = async () => {
     if (!property || !isLandlord || !uniqueCode) {
@@ -221,10 +200,10 @@ export default function PropertyQRCode() {
     // Vérifier si un dépôt existe déjà
     if (currentDepositId && Number(currentDepositId) > 0 && depositData) {
       // Si une caution existe, vérifier si elle est clôturée (remboursée, partiellement remboursée ou retenue)
-      const depositDataArray = depositData as unknown as [bigint, bigint, string, bigint, bigint, bigint, bigint, bigint, number, string];
-      console.log("État de la caution:", depositDataArray[8]);
+      const deposit = depositData as any;
+      console.log("État de la caution:", Number(deposit.status));
 
-      if (depositDataArray[8] === 3 || depositDataArray[8] === 4 || depositDataArray[8] === 5) {
+      if (Number(deposit.status) === 3 || Number(deposit.status) === 4 || Number(deposit.status) === 5) {
         // Caution clôturée, on peut en créer une nouvelle
         console.log("Caution clôturée, création d'une nouvelle caution autorisée");
       } else {
@@ -461,12 +440,12 @@ export default function PropertyQRCode() {
               <Alert className="bg-amber-50 border-amber-200 mb-4">
                 <AlertCircle className="h-5 w-5 text-amber-500" />
                 <AlertTitle>
-                  {depositData && (depositData as any)[8] === 3 || (depositData as any)[8] === 4 || (depositData as any)[8] === 5
+                  {depositData && (Number((depositData as any).status) === 3 || Number((depositData as any).status) === 4 || Number((depositData as any).status) === 5)
                     ? "Nouvelle caution disponible"
                     : "Caution déjà existante"}
                 </AlertTitle>
                 <AlertDescription>
-                  {depositData && (depositData as any)[8] === 3 || (depositData as any)[8] === 4 || (depositData as any)[8] === 5
+                  {depositData && (Number((depositData as any).status) === 3 || Number((depositData as any).status) === 4 || Number((depositData as any).status) === 5)
                     ? "La caution précédente a été clôturée. Vous pouvez créer une nouvelle caution pour ce bien."
                     : isExistingCode
                       ? "Une caution a déjà été créée avec ce code. Le locataire peut l'utiliser pour verser sa caution."
@@ -477,14 +456,15 @@ export default function PropertyQRCode() {
             ) : null}
 
             {/* Bouton pour créer la caution */}
-            {transactionStatus === "idle" && (!currentDepositId || Number(currentDepositId) === 0 || (depositData && ((depositData as any)[8] === 3 || (depositData as any)[8] === 4 || (depositData as any)[8] === 5))) ? (
-              <Button
-                onClick={handleCreateDeposit}
-                className="w-full mt-4"
-                style={{ backgroundColor: "#7759F9" }}
-              >
-                Créer la caution avec ce code
-              </Button>
+            {transactionStatus === "idle" && (!currentDepositId || Number(currentDepositId) === 0 || (depositData && (Number((depositData as any).status) === 3 || Number((depositData as any).status) === 4 || Number((depositData as any).status) === 5))) ? (
+              <div className="flex justify-center mt-4">
+                <Button
+                  onClick={handleCreateDeposit}
+                  style={{ backgroundColor: "#7759F9" }}
+                >
+                  Créer la caution avec ce code
+                </Button>
+              </div>
             ) : null}
           </CardContent>
           <CardFooter>
