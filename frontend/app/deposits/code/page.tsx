@@ -223,12 +223,12 @@ export default function DepositCode() {
     // Délai artificiel pour un meilleur retour utilisateur
     toast({
       title: "Code validé",
-      description: "Redirection vers la page de caution...",
+      description: "Redirection vers la page de versement de la caution...",
     });
     
-    // Rediriger vers la page de propriété avec l'ID validé
+    // Rediriger vers la page de versement de la caution avec l'ID validé
     setTimeout(() => {
-      router.push(`/properties/${validPropertyId}`);
+      router.push(`/deposits/${validPropertyId}`);
       setIsSubmitting(false);
       setIsValidating(false);
     }, 800);
@@ -279,7 +279,6 @@ export default function DepositCode() {
               <Button 
                 onClick={handleSubmitCode} 
                 className="w-full"
-                style={{ backgroundColor: "#7759F9" }}
                 disabled={isSubmitting}
               >
                 {isValidating ? (

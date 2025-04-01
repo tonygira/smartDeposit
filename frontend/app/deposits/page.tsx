@@ -10,7 +10,7 @@ import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getDepositStatusText, DepositStatu
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
-import { QrCode, Wallet, Calendar, Home, MapPin, User, ArrowDownCircle, ArrowUpCircle, AlertTriangle, Coins, CheckCircle, XCircle, Clock, Loader2 } from "lucide-react"
+import { QrCode, Wallet, Calendar, Home, MapPin, User, ArrowDownCircle, ArrowUpCircle, AlertTriangle, Coins, CheckCircle, XCircle, Clock, Loader2, FileText, ClipboardSignature, DoorOpen, DoorClosed, Image } from "lucide-react"
 
 // Composant pour afficher les détails d'une propriété même si elle n'est pas dans l'état properties
 const PropertyDetails = ({ propertyId, existingProperty }: { propertyId: number, existingProperty: any }) => {
@@ -93,6 +93,7 @@ export default function Deposits() {
   const [deposits, setDeposits] = useState<any[]>([])
   const [properties, setProperties] = useState<Record<number, any>>({})
   const [propertyIds, setPropertyIds] = useState<number[]>([])
+  const [depositFiles, setDepositFiles] = useState<Record<number, any[]>>({})
   const router = useRouter()
 
   // Get deposit IDs
@@ -167,6 +168,8 @@ export default function Deposits() {
           return null
         })
         .filter(Boolean)
+        // Tri des cautions par ordre d'ID décroissant (les plus récents en premier)
+        .sort((a, b) => b.id - a.id)
 
       setDeposits(fetchedDeposits)
     }
@@ -226,6 +229,30 @@ export default function Deposits() {
       setProperties(processedProperties);
     }
   }, [propertiesData, propertyIds]);
+
+  // Fetch deposit files
+  const { data: depositFilesData } = useReadContracts({
+    contracts: ((depositIds as bigint[]) || []).map((id) => ({
+      address: CONTRACT_ADDRESS as `0x${string}`,
+      abi: SMART_DEPOSIT_ABI as any,
+      functionName: "getDepositFiles",
+      args: [id],
+    })),
+  });
+
+  // Process deposit files data
+  useEffect(() => {
+    if (depositFilesData && depositIds) {
+      const filesMap: Record<number, any[]> = {};
+      depositFilesData.forEach((result, index) => {
+        if (result.status === "success" && result.result && depositIds) {
+          const depositId = Number(depositIds[index]);
+          filesMap[depositId] = result.result as any[];
+        }
+      });
+      setDepositFiles(filesMap);
+    }
+  }, [depositFilesData, depositIds]);
 
   const getDepositStatusBadge = (statusCode: number) => {
     switch (statusCode) {
@@ -296,6 +323,56 @@ export default function Deposits() {
     });
   };
 
+  // Fonction pour obtenir l'icône du type de fichier
+  const getFileTypeIcon = (fileType: number) => {
+    switch (fileType) {
+      case 0: // Bail
+        return <ClipboardSignature className="h-4 w-4 mr-1 text-indigo-600" />;
+      case 1: // Photos
+        return <Image className="h-4 w-4 mr-1 text-yellow-600" />;
+      case 2: // État des lieux d'entrée
+        return <DoorOpen className="h-4 w-4 mr-1 text-green-600" />;
+      case 3: // État des lieux de sortie
+        return <DoorClosed className="h-4 w-4 mr-1 text-orange-600" />;
+      default:
+        return <FileText className="h-4 w-4 mr-1 text-gray-600" />;
+    }
+  };
+
+  // Fonction pour obtenir le type de fichier en texte
+  const getFileTypeText = (fileType: number) => {
+    switch (fileType) {
+      case 0:
+        return "Bail";
+      case 1:
+        return "Photos";
+      case 2:
+        return "État des lieux d'entrée";
+      case 3:
+        return "État des lieux de sortie";
+      default:
+        return "Document";
+    }
+  };
+
+  // Fonction pour télécharger un fichier
+  const handleDownloadFile = async (cid: string, fileName: string) => {
+    try {
+      const response = await fetch(`https://gateway.pinata.cloud/ipfs/${cid}`);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Erreur lors du téléchargement:", error);
+    }
+  };
+
   if (!isConnected) {
     return (
       <div className="flex min-h-screen flex-col">
@@ -331,76 +408,110 @@ export default function Deposits() {
           <div className="flex flex-col gap-6">
             {deposits.map((deposit) => {
               const property = properties[deposit.propertyId];
+              const files = depositFiles[deposit.id] || [];
 
               return (
                 <Card
                   key={deposit.id}
                   className={`w-full shadow-sm hover:shadow-md transition-shadow duration-200 ${deposit.statusCode === DepositStatus.DISPUTED ? 'bg-red-50' : ''}`}
                 >
-                  <CardHeader>
-                    <div className="flex justify-between items-start">
+                  <CardHeader className="pb-3">
+                    <div className="flex justify-between items-center">
                       <CardTitle className="flex items-center">
                         <Wallet className="h-5 w-5 mr-2 text-primary" />
                         Caution #{deposit.id}
                       </CardTitle>
-                      {getDepositStatusBadge(deposit.statusCode)}
+                      <div className="flex items-center space-x-4">
+                        {getDepositStatusBadge(deposit.statusCode)}
+                      </div>
                     </div>
-                    <CardDescription>
+                    <CardDescription className="mt-2">
                       <PropertyDetails propertyId={deposit.propertyId} existingProperty={property} />
-                      
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div className="space-y-3">
-                        <div className="flex items-center">
-                          <ArrowDownCircle className={`h-4 w-4 mr-2 ${deposit.statusCode === DepositStatus.PAID ? 'text-green-500' : 'text-blue-500'}`} />
-                          <div>
-                            <p className="font-medium">Montant versé</p>
-                            <p className="text-lg font-semibold">{deposit.amount} ETH</p>
-                            {deposit.paymentDate > 0 && (
-                              <div className="flex items-center text-xs text-gray-500 mt-0.5">
-                                <Calendar className="h-3 w-3 mr-1" />
-                                <span>Le {formatDate(deposit.paymentDate)}</span>
-                              </div>
-                            )}
-                          </div>
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {/* Première colonne - Documents */}
+                      <div>
+                        <div className="bg-purple-50 p-3 rounded-lg border border-purple-100">
+                          <p className="flex items-center font-medium mb-3">
+                            <FileText className="h-4 w-4 mr-2 text-primary" />
+                            Documents
+                          </p>
+                          {files && files.length > 0 ? (
+                            <div className="space-y-2 ml-1">
+                              {files.map((file: any, index: number) => (
+                                <div key={index} className="flex items-center py-1">
+                                  <button
+                                    onClick={() => handleDownloadFile(file.cid, file.fileName)}
+                                    className="text-blue-600 hover:underline flex items-center text-sm"
+                                  >
+                                    {getFileTypeIcon(Number(file.fileType))}
+                                    <span title={getFileTypeText(Number(file.fileType))} className="mr-1">{file.fileName}</span>
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-gray-500 ml-1 text-sm">Aucun document disponible</p>
+                          )}
                         </div>
                       </div>
 
-                      <div>
+                      {/* Deuxième colonne - Montants et dates */}
+                      <div className="space-y-4">
+                        {/* Montant versé */}
+                        <div className="bg-purple-50 p-3 rounded-lg border border-purple-100">
+                          <div className="flex items-start">
+                            <ArrowDownCircle className={`h-4 w-4 mr-2 mt-1 ${deposit.statusCode >= DepositStatus.PAID ? 'text-green-500' : 'text-blue-500'}`} />
+                            <div>
+                              <p className="font-medium">Montant versé</p>
+                              <p className="text-lg font-semibold">{deposit.amount} ETH</p>
+                              {deposit.paymentDate > 0 && (
+                                <div className="flex items-center text-xs text-gray-500 mt-1">
+                                  <Calendar className="h-3 w-3 mr-1" />
+                                  <span>Le {formatDate(deposit.paymentDate)}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Montant remboursé/retenu */}
                         {(deposit.statusCode === DepositStatus.REFUNDED ||
                           deposit.statusCode === DepositStatus.PARTIALLY_REFUNDED ||
                           deposit.statusCode === DepositStatus.RETAINED) && (
-                            <div className="flex items-start">
-                              <ArrowUpCircle className={`h-4 w-4 mr-2 mt-1 ${deposit.statusCode === DepositStatus.REFUNDED ? 'text-green-500' : deposit.statusCode === DepositStatus.PARTIALLY_REFUNDED ? 'text-orange-500' : 'text-red-500'}`} />
-                              <div>
-                                <p className="font-medium">
-                                  {deposit.statusCode === DepositStatus.RETAINED ? "Montant retenu" : "Montant remboursé"}
-                                </p>
-                                <p className="text-lg font-semibold">
-                                  {deposit.statusCode === DepositStatus.RETAINED ? deposit.amount : deposit.finalAmount} ETH
-                                </p>
-                                
-                                {deposit.statusCode === DepositStatus.PARTIALLY_REFUNDED && (
-                                  <div className="flex items-center mt-1.5 text-red-500">
-                                    <XCircle className="h-3.5 w-3.5 mr-1" />
-                                    <span>{deposit.retainedAmount} ETH retenus</span>
-                                  </div>
-                                )}
-                                
-                                {deposit.statusCode !== DepositStatus.RETAINED && (
-                                  <p className="text-xs text-gray-500">
-                                    {(Number(deposit.finalAmount) / Number(deposit.amount) * 100).toFixed(1)}% de la caution
+                            <div className="bg-purple-50 p-3 rounded-lg border border-purple-100">
+                              <div className="flex items-start">
+                                <ArrowUpCircle className={`h-4 w-4 mr-2 mt-1 ${deposit.statusCode === DepositStatus.REFUNDED ? 'text-green-500' : deposit.statusCode === DepositStatus.PARTIALLY_REFUNDED ? 'text-orange-500' : 'text-red-500'}`} />
+                                <div>
+                                  <p className="font-medium">
+                                    {deposit.statusCode === DepositStatus.RETAINED ? "Montant retenu" : "Montant remboursé"}
                                   </p>
-                                )}
-                                
-                                {deposit.refundDate > 0 && (
-                                  <div className="flex items-center text-xs text-gray-500 mt-0.5">
-                                    <Calendar className="h-3 w-3 mr-1" />
-                                    <span>Le {formatDate(deposit.refundDate)}</span>
-                                  </div>
-                                )}
+                                  <p className="text-lg font-semibold">
+                                    {deposit.statusCode === DepositStatus.RETAINED ? deposit.amount : deposit.finalAmount} ETH
+                                  </p>
+                                  
+                                  {deposit.statusCode === DepositStatus.PARTIALLY_REFUNDED && (
+                                    <div className="flex items-center mt-1.5 text-red-500 text-sm">
+                                      <XCircle className="h-3.5 w-3.5 mr-1" />
+                                      <span>{deposit.retainedAmount} ETH retenus</span>
+                                    </div>
+                                  )}
+                                  
+                                  {deposit.statusCode !== DepositStatus.RETAINED && (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                      {(Number(deposit.finalAmount) / Number(deposit.amount) * 100).toFixed(1)}% de la caution
+                                    </p>
+                                  )}
+                                  
+                                  {deposit.refundDate > 0 && (
+                                    <div className="flex items-center text-xs text-gray-500 mt-1">
+                                      <Calendar className="h-3 w-3 mr-1" />
+                                      <span>Le {formatDate(deposit.refundDate)}</span>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           )}
