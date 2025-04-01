@@ -220,6 +220,32 @@ contract SmartDeposit is Ownable {
         return propertyId;
     }
 
+    /// @notice Deletes a property if it has no active deposit
+    /// @dev Only the landlord can delete their property
+    /// @param _propertyId ID of the property to delete
+    function deleteProperty(
+        uint256 _propertyId
+    ) external propertyExists(_propertyId) onlyLandlord(_propertyId) {
+        Property storage property = properties[_propertyId];
+        require(
+            property.currentDepositId == 0,
+            "Cannot delete property with active deposit"
+        );
+
+        // Remove property from landlord's portfolio. NOTE: this will never be a long loop because the landlord can only have a few properties
+        uint256[] storage landlordProps = landlordProperties[property.landlord];
+        for (uint256 i = 0; i < landlordProps.length; i++) {
+            if (landlordProps[i] == _propertyId) {
+                landlordProps[i] = landlordProps[landlordProps.length - 1];
+                landlordProps.pop();
+                break;
+            }
+        }
+
+        // Delete property
+        delete properties[_propertyId];
+    }
+
     /// @notice Creates a deposit for an existing property
     /// @dev Only the landlord can create a deposit for their property
     /// @dev The deposit can only be created if the property is not already rented
@@ -272,11 +298,7 @@ contract SmartDeposit is Ownable {
         propertyDeposits[_propertyId].push(depositId); // add deposit id to property deposits (record of all deposits)
         properties[_propertyId].status = PropertyStatus.NOT_RENTED; // update property status: property is ready to be rented again
 
-        emit DepositCreated(
-            depositId,
-            _propertyId,
-            _depositCode
-        );
+        emit DepositCreated(depositId, _propertyId, _depositCode);
         emit PropertyStatusChanged(_propertyId, PropertyStatus.NOT_RENTED);
 
         return depositId;
@@ -299,7 +321,7 @@ contract SmartDeposit is Ownable {
         require(_amount > 0, "Deposit amount must be greater than 0");
 
         deposit.amount = _amount;
-    } 
+    }
 
     /// @notice Allows a tenant to pay a deposit
     /// @dev Verifies deposit code and exact amount before accepting payment
