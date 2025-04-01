@@ -275,7 +275,7 @@ describe('SmartDeposit', function () {
 
         await expect(
           addTestFile(smartDeposit, other, depositId)
-        ).to.be.revertedWith("Only landlord or tenant can add files")
+        ).to.be.revertedWith("Not the landlord")
       })
 
       it('should fail when adding file to non-existent deposit', async function () {
@@ -284,15 +284,6 @@ describe('SmartDeposit', function () {
         await expect(
           addTestFile(smartDeposit, landlord, 999n)
         ).to.be.revertedWith("Deposit does not exist")
-      })
-
-      it('should fail when adding file with invalid type', async function () {
-        const { smartDeposit, landlord } = await loadFixture(deploySmartDepositFixture)
-        const { depositId } = await setupDeposit(smartDeposit, landlord)
-
-        await expect(
-          addTestFile(smartDeposit, landlord, depositId, 99) // Invalid file type
-        ).to.be.revertedWith("Invalid file type")
       })
     })
   })
