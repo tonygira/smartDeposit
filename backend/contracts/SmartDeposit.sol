@@ -19,6 +19,16 @@ contract SmartDeposit is Ownable {
         PropertyStatus status; /// @notice Current status of the property
     }
 
+    /// @notice Stores references to IPFS files associated with deposits
+    /// @dev Used for storing legal documents and property photos
+    struct FileReference {
+        string cid; /// @notice IPFS Content Identifier
+        uint256 uploadTimestamp; /// @notice When the file was uploaded
+        FileType fileType; /// @notice Type of document stored
+        address uploader; /// @notice Who uploaded the file
+        string fileName; /// @notice Name of the uploaded file
+    }
+
     /// @notice Contains all information about a rental deposit
     /// @dev Tracks the complete lifecycle of a deposit from creation to refund
     struct Deposit {
@@ -32,16 +42,6 @@ contract SmartDeposit is Ownable {
         uint256 paymentDate; /// @notice Timestamp when tenant paid
         uint256 refundDate; /// @notice Timestamp of refund completion
         DepositStatus status; /// @notice Current status of the deposit
-    }
-
-    /// @notice Stores references to IPFS files associated with properties
-    /// @dev Used for storing legal documents and property photos
-    struct FileReference {
-        string cid; /// @notice IPFS Content Identifier
-        uint256 uploadTimestamp; /// @notice When the file was uploaded
-        FileType fileType; /// @notice Type of document stored
-        address uploader; /// @notice Who uploaded the file
-        string fileName; /// @notice Name of the uploaded file
     }
 
     /// @notice Types of files that can be attached to a property
@@ -62,7 +62,7 @@ contract SmartDeposit is Ownable {
     /// @notice Possible states of a deposit
     enum DepositStatus {
         PENDING, /// @notice Created but not paid
-        PAID, /// @notice Paid by tenant
+        PAID, // @notice Paid by tenant
         DISPUTED, /// @notice Under dispute
         RETAINED, /// @notice Kept by landlord
         PARTIALLY_REFUNDED, /// @notice Partially returned to tenant
@@ -71,9 +71,9 @@ contract SmartDeposit is Ownable {
 
     // State variables
     /// @notice Counter for generating unique property IDs
-    uint256 public propertyCounter;
+    uint256 private propertyCounter;
     /// @notice Counter for generating unique deposit IDs
-    uint256 public depositCounter;
+    uint256 private depositCounter;
     /// @notice Maps property IDs to Property structs
     mapping(uint256 => Property) private properties;
     /// @notice Maps deposit IDs to Deposit structs
@@ -84,9 +84,8 @@ contract SmartDeposit is Ownable {
     mapping(address => uint256[]) private tenantDeposits;
     /// @notice Maps property IDs to all deposit IDs (record of all deposits)
     mapping(uint256 => uint256[]) private propertyDeposits;
-    /// @notice Maps property IDs and file types to arrays of file references
-    mapping(uint256 => mapping(FileType => FileReference[]))
-        private propertyFiles;
+    /// @notice Maps deposit IDs to arrays of file references
+    mapping(uint256 => FileReference[]) private depositFiles;
 
     // Events
     /// @notice Emitted when a new property is created
@@ -128,9 +127,9 @@ contract SmartDeposit is Ownable {
         PropertyStatus status
     );
 
-    /// @notice Emitted when a file is added to a property
+    /// @notice Emitted when a file is added to a deposit
     event FileAdded(
-        uint256 indexed propertyId,
+        uint256 indexed depositId,
         FileType indexed fileType,
         string cid,
         address indexed uploader
@@ -140,7 +139,6 @@ contract SmartDeposit is Ownable {
     event DepositCreated(
         uint256 indexed depositId,
         uint256 indexed propertyId,
-        uint256 amount,
         string depositCode
     );
 
@@ -224,14 +222,13 @@ contract SmartDeposit is Ownable {
 
     /// @notice Creates a deposit for an existing property
     /// @dev Only the landlord can create a deposit for their property
+    /// @dev The deposit can only be created if the property is not already rented
     /// @param _propertyId ID of the property for which to create the deposit
     /// @param _depositCode Unique code that will be required for tenant payment
-    /// @param _depositAmount Amount required for the deposit in wei
     /// @return depositId The ID of the newly created deposit
     function createDeposit(
         uint256 _propertyId,
-        string memory _depositCode,
-        uint256 _depositAmount
+        string memory _depositCode
     )
         external
         propertyExists(_propertyId)
@@ -263,7 +260,7 @@ contract SmartDeposit is Ownable {
             propertyId: _propertyId,
             depositCode: _depositCode,
             tenant: address(0),
-            amount: _depositAmount,
+            amount: 0,
             finalAmount: 0,
             creationDate: block.timestamp,
             paymentDate: 0,
@@ -278,13 +275,31 @@ contract SmartDeposit is Ownable {
         emit DepositCreated(
             depositId,
             _propertyId,
-            _depositAmount,
             _depositCode
         );
         emit PropertyStatusChanged(_propertyId, PropertyStatus.NOT_RENTED);
 
         return depositId;
     }
+
+    /// @notice Updates the deposit amount for a pending deposit
+    /// @dev Only the landlord can update the deposit amount
+    /// @param _depositId ID of the deposit to update
+    /// @param _amount  deposit amount in wei
+    function setDepositAmount(
+        uint256 _depositId,
+        uint256 _amount
+    )
+        external
+        depositExists(_depositId)
+        onlyLandlord(deposits[_depositId].propertyId)
+    {
+        Deposit storage deposit = deposits[_depositId];
+        require(deposit.status == DepositStatus.PENDING, "Deposit not pending");
+        require(_amount > 0, "Deposit amount must be greater than 0");
+
+        deposit.amount = _amount;
+    } 
 
     /// @notice Allows a tenant to pay a deposit
     /// @dev Verifies deposit code and exact amount before accepting payment
@@ -296,7 +311,10 @@ contract SmartDeposit is Ownable {
     ) external payable depositExists(_depositId) {
         Deposit storage deposit = deposits[_depositId];
 
-        require(deposit.status == DepositStatus.PENDING, "Deposit not pending");
+        require(
+            deposit.status == DepositStatus.PENDING,
+            "Deposit not requested"
+        );
         require(
             keccak256(bytes(deposit.depositCode)) ==
                 keccak256(bytes(_depositCode)),
@@ -410,19 +428,23 @@ contract SmartDeposit is Ownable {
         );
     }
 
-    /// @notice Adds a file reference to a property
+    /// @notice Adds a file reference to a deposit
     /// @dev Stores IPFS hash and metadata about the file
-    /// @param _propertyId ID of the property to attach the file to
+    /// @param _depositId ID of the deposit to attach the file to
     /// @param _fileType Type of the file being added
     /// @param _cid IPFS Content Identifier of the file
     /// @param _fileName Name of the uploaded file
-    function addFile(
-        uint256 _propertyId,
+    function addDepositFile(
+        uint256 _depositId,
         FileType _fileType,
         string memory _cid,
         string memory _fileName
-    ) external propertyExists(_propertyId) onlyLandlord(_propertyId) {
-        propertyFiles[_propertyId][_fileType].push(
+    )
+        external
+        depositExists(_depositId)
+        onlyLandlord(deposits[_depositId].propertyId)
+    {
+        depositFiles[_depositId].push(
             FileReference({
                 cid: _cid,
                 uploadTimestamp: block.timestamp,
@@ -432,7 +454,7 @@ contract SmartDeposit is Ownable {
             })
         );
 
-        emit FileAdded(_propertyId, _fileType, _cid, msg.sender);
+        emit FileAdded(_depositId, _fileType, _cid, msg.sender);
     }
 
     // View Functions
@@ -459,12 +481,19 @@ contract SmartDeposit is Ownable {
     /// @return Array of deposit IDs associated with the property
     function getPropertyDeposits(
         uint256 _propertyId
-    ) external view propertyExists(_propertyId) returns (uint256[] memory) {
+    )
+        external
+        view
+        propertyExists(_propertyId)
+        onlyLandlord(_propertyId)
+        returns (uint256[] memory)
+    {
         return propertyDeposits[_propertyId];
     }
 
     /// @notice Gets current active deposit ID for a property
     /// @dev the onlyLandlord modifier cannot be used here because the future tenant will call this function before paying the deposit
+    /// @dev TODO: add a modifier to allow the lanlord and the concerned tenant to call this function
     /// @param _propertyId ID of the property to query
     /// @return The ID of the current deposit (0 if none)
     function getDepositIdFromProperty(
@@ -506,36 +535,19 @@ contract SmartDeposit is Ownable {
         return deposits[_depositId];
     }
 
-    /// @notice Gets all files associated with a property
-    /// @dev Returns files of all types for the specified property
-    /// @param _propertyId ID of the property to query
+    /// @notice Gets all files associated with a deposit
+    /// @dev Returns files for the specified deposit, only accessible by landlord or tenant
+    /// @param _depositId ID of the deposit to query
     /// @return Array of FileReference structs containing file details
-    function getPropertyFiles(
-        uint256 _propertyId
-    )
-        external
-        view
-        propertyExists(_propertyId)
-        returns (FileReference[] memory)
-    {
-        uint256 totalFiles = 0;
-        for (uint i = 0; i < 4; i++) {
-            totalFiles += propertyFiles[_propertyId][FileType(i)].length;
-        }
-
-        FileReference[] memory allFiles = new FileReference[](totalFiles);
-        uint256 currentIndex = 0;
-
-        for (uint i = 0; i < 4; i++) {
-            FileReference[] storage filesOfType = propertyFiles[_propertyId][
-                FileType(i)
-            ];
-            for (uint j = 0; j < filesOfType.length; j++) {
-                allFiles[currentIndex] = filesOfType[j];
-                currentIndex++;
-            }
-        }
-
-        return allFiles;
+    function getDepositFiles(
+        uint256 _depositId
+    ) external view depositExists(_depositId) returns (FileReference[] memory) {
+        /*Deposit storage deposit = deposits[_depositId];
+        require(
+            msg.sender == properties[deposit.propertyId].landlord ||
+                msg.sender == deposit.tenant,
+            "Only landlord or tenant can access deposit files"
+        );*/
+        return depositFiles[_depositId];
     }
 }
