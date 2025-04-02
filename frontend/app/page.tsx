@@ -42,9 +42,9 @@ export default function Home() {
                   <Image 
                     src="/1.png" 
                     alt="Sécurité" 
-                    width={205}
-                    height={287}
-                    className="w-[205px] h-[287px] object-cover" 
+                    width={120} 
+                    height={100}
+                    className="w-full h-auto object-contain" 
                   />
                 </div>
                 <div className="p-3 text-center">

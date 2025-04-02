@@ -11,6 +11,8 @@ import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
 import { QrCode, Wallet, Calendar, Home, MapPin, User, ArrowDownCircle, ArrowUpCircle, AlertTriangle, Coins, CheckCircle, XCircle, Clock, Loader2, FileText, ClipboardSignature, DoorOpen, DoorClosed, Image } from "lucide-react"
+import { ethers } from "ethers"
+import AddNFTButton from "./add-nft-button"
 
 // Composant pour afficher les détails d'une propriété même si elle n'est pas dans l'état properties
 const PropertyDetails = ({ propertyId, existingProperty }: { propertyId: number, existingProperty: any }) => {
@@ -95,6 +97,10 @@ export default function Deposits() {
   const [propertyIds, setPropertyIds] = useState<number[]>([])
   const [depositFiles, setDepositFiles] = useState<Record<number, any[]>>({})
   const router = useRouter()
+  
+  // NFT related states
+  const [depositNFTAddress, setDepositNFTAddress] = useState<string>("")
+  const [tokenIds, setTokenIds] = useState<{[key: number]: string}>({})
 
   // Get deposit IDs
   const { data: depositIds, refetch: refetchDepositIds } = useReadContract({
@@ -253,6 +259,59 @@ export default function Deposits() {
       setDepositFiles(filesMap);
     }
   }, [depositFilesData, depositIds]);
+
+  // Récupérer l'adresse du contrat NFT
+  const { data: depositNFTAddressData } = useReadContract({
+    address: CONTRACT_ADDRESS as `0x${string}`,
+    abi: SMART_DEPOSIT_ABI,
+    functionName: "depositNFT",
+  });
+
+  // Effet pour mettre à jour l'adresse du contrat NFT
+  useEffect(() => {
+    if (depositNFTAddressData) {
+      setDepositNFTAddress(depositNFTAddressData as string);
+    }
+  }, [depositNFTAddressData]);
+
+  // Si des dépôts sont chargés, rechercher les token IDs pour les cautions payées
+  useEffect(() => {
+    const fetchTokenIds = async () => {
+      if (depositNFTAddress && deposits.length > 0) {
+        try {
+          // On utilise l'ABI minimal pour interagir avec le contrat DepositNFT
+          const depositNFTAbi = [
+            "function getTokenIdFromDeposit(uint256 _depositId) view returns (uint256)"
+          ];
+          
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const depositNFTContract = new ethers.Contract(depositNFTAddress, depositNFTAbi, provider);
+          
+          const tokenIdsMap: {[key: number]: string} = {};
+          
+          // Uniquement pour les dépôts payés
+          const paidDeposits = deposits.filter(d => d.statusCode === DepositStatus.PAID);
+          
+          for (const deposit of paidDeposits) {
+            try {
+              const tokenIdBigInt = await depositNFTContract.getTokenIdFromDeposit(deposit.id);
+              tokenIdsMap[deposit.id] = tokenIdBigInt.toString();
+            } catch (error) {
+              console.error(`Erreur pour le dépôt ${deposit.id}:`, error);
+            }
+          }
+          
+          setTokenIds(tokenIdsMap);
+        } catch (error) {
+          console.error("Erreur lors de la récupération des token IDs:", error);
+        }
+      }
+    };
+    
+    if (typeof window !== 'undefined' && window.ethereum) {
+      fetchTokenIds();
+    }
+  }, [depositNFTAddress, deposits]);
 
   const getDepositStatusBadge = (statusCode: number) => {
     switch (statusCode) {
@@ -423,6 +482,13 @@ export default function Deposits() {
                       </CardTitle>
                       <div className="flex items-center space-x-4">
                         {getDepositStatusBadge(deposit.statusCode)}
+                        {depositNFTAddress && tokenIds[deposit.id] && deposit.statusCode === DepositStatus.PAID && (
+                          <AddNFTButton 
+                            nftAddress={depositNFTAddress}
+                            tokenId={tokenIds[deposit.id]}
+                            userAddress={address || ""}
+                          />
+                        )}
                       </div>
                     </div>
                     <CardDescription className="mt-2">
