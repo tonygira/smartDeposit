@@ -2,12 +2,15 @@
 pragma solidity 0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "./DepositNFT.sol";
 
 /// @title SmartDeposit - A smart contract for managing rental deposits
 /// @author Tony Girardo
 /// @notice This contract manages rental deposits between landlords and tenants
 /// @dev Inherits from OpenZeppelin's Ownable for basic access control
 contract SmartDeposit is Ownable {
+    DepositNFT public depositNFT;
+
     /// @notice Represents a rental property with its details and current status
     /// @dev Links a property to its owner and tracks its rental/deposit status
     struct Property {
@@ -150,7 +153,9 @@ contract SmartDeposit is Ownable {
     );
 
     /// @dev Initialize the contract with the deployer as owner
-    constructor() Ownable(msg.sender) {}
+    constructor(address _depositNFT) Ownable(msg.sender) {
+        depositNFT = DepositNFT(_depositNFT);
+    }
 
     // Modifiers
     /// @notice Ensures caller is the landlord of the specified property
@@ -351,6 +356,9 @@ contract SmartDeposit is Ownable {
         properties[deposit.propertyId].status = PropertyStatus.RENTED;
         tenantDeposits[msg.sender].push(_depositId);
 
+        // Mint NFT for the tenant
+        depositNFT.mintDepositNFT(_depositId, msg.sender);
+
         emit DepositPaid(_depositId, msg.sender, msg.value);
         emit PropertyStatusChanged(deposit.propertyId, PropertyStatus.RENTED);
         emit DepositStatusChanged(_depositId, DepositStatus.PAID);
@@ -375,7 +383,9 @@ contract SmartDeposit is Ownable {
 
         Property storage property = properties[deposits[_depositId].propertyId];
         property.status = PropertyStatus.NOT_RENTED;
+        property.currentDepositId = 0; // Libère le bien pour une nouvelle caution
 
+        // Transfert de l'argent au locataire
         payable(deposit.tenant).transfer(deposit.amount);
 
         emit DepositStatusChanged(_depositId, deposit.status);
@@ -442,6 +452,7 @@ contract SmartDeposit is Ownable {
         }
 
         properties[deposit.propertyId].status = PropertyStatus.NOT_RENTED;
+        properties[deposit.propertyId].currentDepositId = 0; // Libère le bien pour une nouvelle caution
 
         emit DisputeResolved(_depositId, deposit.status, _refundedAmount);
         emit PropertyStatusChanged(
@@ -571,5 +582,76 @@ contract SmartDeposit is Ownable {
             "Only landlord or tenant can access deposit files"
         );*/
         return depositFiles[_depositId];
+    }
+
+    // Getters spécifiques pour DepositNFT
+    /// @notice Obtient les informations de base d'une caution pour le NFT
+    /// @param _depositId ID de la caution
+    /// @return propertyId ID de la propriété
+    /// @return tenant Adresse du locataire
+    /// @return amount Montant de la caution
+    /// @return status Statut numérique de la caution
+    function getDepositInfoForNFT(
+        uint256 _depositId
+    )
+        external
+        view
+        depositExists(_depositId)
+        returns (
+            uint256 propertyId,
+            address tenant,
+            uint256 amount,
+            uint256 status
+        )
+    {
+        Deposit storage deposit = deposits[_depositId];
+        return (
+            deposit.propertyId,
+            deposit.tenant,
+            deposit.amount,
+            uint256(deposit.status)
+        );
+    }
+
+    /// @notice Obtient les informations étendues d'une caution pour le NFT avec dates et landlord
+    /// @param _depositId ID de la caution
+    /// @return propertyId ID de la propriété
+    /// @return tenant Adresse du locataire
+    /// @return amount Montant de la caution
+    /// @return status Statut numérique de la caution
+    /// @return paymentDate Date de paiement de la caution
+    /// @return refundDate Date de remboursement de la caution
+    /// @return finalAmount Montant final remboursé
+    /// @return landlord Adresse du propriétaire du bien
+    function getExtendedDepositInfoForNFT(
+        uint256 _depositId
+    )
+        external
+        view
+        depositExists(_depositId)
+        returns (
+            uint256 propertyId,
+            address tenant,
+            uint256 amount,
+            uint256 status,
+            uint256 paymentDate,
+            uint256 refundDate,
+            uint256 finalAmount,
+            address landlord
+        )
+    {
+        Deposit storage deposit = deposits[_depositId];
+        Property storage property = properties[deposit.propertyId];
+
+        return (
+            deposit.propertyId,
+            deposit.tenant,
+            deposit.amount,
+            uint256(deposit.status),
+            deposit.paymentDate,
+            deposit.refundDate,
+            deposit.finalAmount,
+            property.landlord
+        );
     }
 }

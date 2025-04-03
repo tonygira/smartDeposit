@@ -1,11 +1,26 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
+import "@nomicfoundation/hardhat-verify";
 import * as dotenv from "dotenv";
 
 dotenv.config();
 
 const config: HardhatUserConfig = {
-  solidity: "0.8.28",
+  solidity: {
+    version: "0.8.28",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200
+      },
+      viaIR: true,
+      outputSelection: {
+        "*": {
+          "*": ["evm.bytecode.object", "evm.deployedBytecode.object"]
+        }
+      }
+    }
+  },
   defaultNetwork: 'hardhat',
   networks: {
     // sepolia: {

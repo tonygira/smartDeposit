@@ -1,7 +1,7 @@
 import { loadFixture } from '@nomicfoundation/hardhat-toolbox/network-helpers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { SmartDeposit } from '../typechain-types'
+import { SmartDeposit, DepositNFT } from '../typechain-types'
 import { HardhatEthersSigner } from '@nomicfoundation/hardhat-ethers/signers'
 import { ContractTransactionReceipt, EventLog } from 'ethers'
 
@@ -21,9 +21,24 @@ describe('SmartDeposit', function () {
   // Base deployment fixture
   async function deploySmartDepositFixture() {
     const [owner, landlord, tenant, other] = await ethers.getSigners()
+    
+    // Étape 1: Déployer le contrat DepositNFT (sans paramètres)
+    const DepositNFT = await ethers.getContractFactory('DepositNFT')
+    const depositNFT = await DepositNFT.deploy()
+    await depositNFT.waitForDeployment()
+
+    // Étape 2: Déployer le contrat SmartDeposit avec l'adresse du DepositNFT
     const SmartDeposit = await ethers.getContractFactory('SmartDeposit')
-    const smartDeposit = await SmartDeposit.deploy() as SmartDeposit
-    return { smartDeposit, owner, landlord, tenant, other }
+    const smartDeposit = await SmartDeposit.deploy(await depositNFT.getAddress())
+    await smartDeposit.waitForDeployment()
+
+    // Étape 3: Initialiser DepositNFT avec l'adresse de SmartDeposit
+    await depositNFT.connect(owner).initialize(await smartDeposit.getAddress())
+
+    // Étape 4: Transférer la propriété de DepositNFT au contrat SmartDeposit
+    await depositNFT.connect(owner).transferOwnership(await smartDeposit.getAddress())
+
+    return { smartDeposit, depositNFT, owner, landlord, tenant, other }
   }
 
   async function createTestProperty(
