@@ -1,33 +1,38 @@
-import { ethers, run } from "hardhat";
+import { ethers } from "hardhat";
 
 async function main() {
-  console.log("Déploiement du contrat SmartDeposit...");
+  const [deployer] = await ethers.getSigners();
+  console.log("Déploiement avec l'adresse:", deployer.address);
 
-  // Déploiement du contrat
+  // Étape 1: Déployer le contrat DepositNFT (sans paramètres)
+  const DepositNFT = await ethers.getContractFactory("DepositNFT");
+  const depositNFT = await DepositNFT.deploy();
+  await depositNFT.waitForDeployment();
+  
+  const depositNFTAddress = await depositNFT.getAddress();
+  console.log("DepositNFT déployé à l'adresse:", depositNFTAddress);
+
+  // Étape 2: Déployer le contrat SmartDeposit avec l'adresse du DepositNFT
   const SmartDeposit = await ethers.getContractFactory("SmartDeposit");
-  const smartDeposit = await SmartDeposit.deploy();
-
+  const smartDeposit = await SmartDeposit.deploy(depositNFTAddress);
   await smartDeposit.waitForDeployment();
+  
+  const smartDepositAddress = await smartDeposit.getAddress();
+  console.log("SmartDeposit déployé à l'adresse:", smartDepositAddress);
 
-  const address = await smartDeposit.getAddress();
-  console.log(`Contrat SmartDeposit déployé à l'adresse: ${address}`);
+  // Étape 3: Initialiser DepositNFT avec l'adresse de SmartDeposit
+  console.log("Initialisation de DepositNFT avec l'adresse de SmartDeposit...");
+  const initTx = await depositNFT.initialize(smartDepositAddress);
+  await initTx.wait();
+  console.log("DepositNFT initialisé avec succès");
+
+  // Étape 4: Transférer la propriété de DepositNFT au contrat SmartDeposit
+  console.log("Transfert de la propriété de DepositNFT à SmartDeposit...");
+  const transferTx = await depositNFT.transferOwnership(smartDepositAddress);
+  await transferTx.wait();
+  console.log("Propriété transférée avec succès");
   
-    /*
-  // Vérification sur Etherscan (attendre quelques blocs)
-  console.log("Attente de quelques blocs avant la vérification...");
-  await new Promise(resolve => setTimeout(resolve, 40000)); // 40 secondes d'attente
-  
-  // Vérification du contrat
-try {
-    console.log("Vérification du contrat sur Etherscan...");
-    await run("verify:verify", {
-      address: address,
-      constructorArguments: []
-    });
-    console.log("Contrat vérifié avec succès!");
-  } catch (error) {
-    console.log("Erreur lors de la vérification:", error);
-  }*/
+  console.log("Déploiement terminé!");
 }
 
 // Exécution du script

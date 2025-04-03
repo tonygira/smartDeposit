@@ -146,7 +146,7 @@ export default function DepositCode() {
             setIsSubmitting(false);
             setIsValidating(false);
           }
-        }, 1500);
+        }, 1000);
         
         return;
       }
@@ -169,7 +169,7 @@ export default function DepositCode() {
               return;
             }
             handleSubmitCode();
-          }, 3000);
+          }, 1000);
           return;
         }
         

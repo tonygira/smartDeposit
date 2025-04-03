@@ -10,7 +10,7 @@ import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getDepositStatusText, DepositStatu
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
-import { QrCode, Wallet, Calendar, Home, MapPin, User, ArrowDownCircle, ArrowUpCircle, AlertTriangle, Coins, CheckCircle, XCircle, Clock, Loader2, FileText, ClipboardSignature, DoorOpen, DoorClosed, Image } from "lucide-react"
+import { QrCode, Wallet, Calendar, Home, MapPin, User, ArrowDownCircle, ArrowUpCircle, AlertTriangle, Coins, CheckCircle, XCircle, Clock, Loader2, FileText, ClipboardSignature, DoorOpen, DoorClosed, Image, Gem } from "lucide-react"
 
 // Composant pour afficher les détails d'une propriété même si elle n'est pas dans l'état properties
 const PropertyDetails = ({ propertyId, existingProperty }: { propertyId: number, existingProperty: any }) => {
@@ -95,6 +95,10 @@ export default function Deposits() {
   const [propertyIds, setPropertyIds] = useState<number[]>([])
   const [depositFiles, setDepositFiles] = useState<Record<number, any[]>>({})
   const router = useRouter()
+  
+  // NFT related states
+  const [depositNFTAddress, setDepositNFTAddress] = useState<string>("")
+  const [tokenIds, setTokenIds] = useState<{[key: number]: string}>({})
 
   // Get deposit IDs
   const { data: depositIds, refetch: refetchDepositIds } = useReadContract({
@@ -253,6 +257,66 @@ export default function Deposits() {
       setDepositFiles(filesMap);
     }
   }, [depositFilesData, depositIds]);
+
+  // Récupérer l'adresse du contrat NFT
+  const { data: depositNFTAddressData } = useReadContract({
+    address: CONTRACT_ADDRESS as `0x${string}`,
+    abi: SMART_DEPOSIT_ABI,
+    functionName: "depositNFT",
+  });
+
+  // Effet pour mettre à jour l'adresse du contrat NFT
+  useEffect(() => {
+    if (depositNFTAddressData) {
+      setDepositNFTAddress(depositNFTAddressData as string);
+    }
+  }, [depositNFTAddressData]);
+
+  // Filtrer les dépôts "mintés" dans un useEffect pour éviter les calculs à chaque rendu
+  const [mintedDeposits, setMintedDeposits] = useState<any[]>([]);
+
+  // Met à jour la liste des dépôts mintés quand les dépôts changent
+  useEffect(() => {
+    const filtered = deposits.filter(d => d.statusCode >= DepositStatus.PAID);
+    setMintedDeposits(filtered);
+  }, [deposits]);
+  
+  // Utiliser useReadContracts pour récupérer les token IDs en parallèle
+  const { data: tokenIdsData } = useReadContracts({
+    contracts: mintedDeposits.map((deposit) => ({
+      address: depositNFTAddress as `0x${string}`,
+      abi: [{
+        name: "getTokenIdFromDeposit",
+        type: "function",
+        stateMutability: "view",
+        inputs: [{ name: "_depositId", type: "uint256" }],
+        outputs: [{ name: "", type: "uint256" }]
+      }],
+      functionName: "getTokenIdFromDeposit",
+      args: [BigInt(deposit.id)],
+    })),
+    enabled: Boolean(depositNFTAddress) && mintedDeposits.length > 0,
+  });
+
+  // Traiter les résultats de la récupération des token IDs
+  useEffect(() => {
+    if (tokenIdsData && mintedDeposits.length > 0) {
+      const tokenIdsMap: {[key: number]: string} = {};
+      
+      tokenIdsData.forEach((result, index) => {
+        if (result.status === "success" && result.result) {
+          const depositId = mintedDeposits[index].id;
+          const tokenId = result.result.toString();
+          
+          if (tokenId && tokenId !== "0") {
+            tokenIdsMap[depositId] = tokenId;
+          }
+        }
+      });
+      
+      setTokenIds(tokenIdsMap);
+    }
+  }, [tokenIdsData, mintedDeposits]);
 
   const getDepositStatusBadge = (statusCode: number) => {
     switch (statusCode) {
@@ -423,6 +487,13 @@ export default function Deposits() {
                       </CardTitle>
                       <div className="flex items-center space-x-4">
                         {getDepositStatusBadge(deposit.statusCode)}
+                        {depositNFTAddress && tokenIds[deposit.id] && (
+                          <Link href={`/deposits/nft/${tokenIds[deposit.id]}`}>
+                            <Button variant="ghost" size="icon" className="rounded-full">
+                              <Gem className="h-5 w-5 text-purple-500" />
+                            </Button>
+                          </Link>
+                        )}
                       </div>
                     </div>
                     <CardDescription className="mt-2">
