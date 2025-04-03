@@ -20,10 +20,6 @@ contract DepositNFT is ERC721Enumerable, Ownable {
     mapping(uint256 => uint256) private _tokenIdToDepositId;
     bool private _initialized;
 
-    // URI de l'image du logo sur IPFS
-    string private constant _logoImageURI =
-        "https://ipfs.io/ipfs/bafkreibujq7usmtlnaysncqriuwncuk2cjb2nqythu34ozropbeua6siii";
-
     event DepositNFTMinted(
         uint256 indexed depositId,
         uint256 indexed tokenId,
@@ -153,56 +149,104 @@ contract DepositNFT is ERC721Enumerable, Ownable {
                 depositId
             );
 
+        // Générer l'image SVG avec l'ID de la caution
+        string memory svgImage = generateSVGImage(depositId, amount);
+        string memory encodedSvg = Base64.encode(bytes(svgImage));
+        string memory imageUri = string.concat(
+            "data:image/svg+xml;base64,",
+            encodedSvg
+        );
+
         // Créer les métadonnées JSON avec encodage UTF-8
-        string memory json = string(
-            abi.encodePacked(
-                '{"name": "Caution Locative #',
-                depositId.toString(),
-                '", "description": "NFT repr\\u00e9sentant une caution locative", ',
-                '"image": "',
-                _logoImageURI,
-                '", ',
-                '"attributes": [',
-                '{"trait_type": "ID Caution", "value": "',
-                depositId.toString(),
-                '"}, ',
-                '{"trait_type": "Locataire", "value": "',
-                _addressToString(tenant),
-                '"}, ',
-                '{"trait_type": "ID Propri\\u00e9t\\u00e9", "value": "',
-                propertyId.toString(),
-                '"}, ',
-                '{"trait_type": "Propri\\u00e9taire", "value": "',
-                _addressToString(landlord),
-                '"}, ',
-                '{"trait_type": "Statut", "value": "',
-                _getStatusString(status),
-                '"}, ',
-                '{"trait_type": "Montant Initial", "value": "',
-                amount.toString(),
-                '"}, ',
-                '{"trait_type": "Date de Paiement", "value": "',
-                _formatTimestamp(payment_timestamp),
-                '"}, ',
-                '{"trait_type": "Montant Rembours\\u00e9", "value": "',
-                finalAmount.toString(),
-                '"}, ',
-                '{"trait_type": "Date de Remboursement", "value": "',
-                _formatTimestamp(refund_timestamp),
-                '"}'
-            )
+        string memory json = string.concat(
+            '{"name": "Caution Locative #',
+            depositId.toString(),
+            '", "description": "NFT repr\\u00e9sentant une caution locative", ',
+            '"image": "',
+            imageUri,
+            '", ',
+            '"attributes": [',
+            '{"trait_type": "ID Caution", "value": "',
+            depositId.toString(),
+            '"}, ',
+            '{"trait_type": "Locataire", "value": "',
+            _addressToString(tenant),
+            '"}, ',
+            '{"trait_type": "ID Propri\\u00e9t\\u00e9", "value": "',
+            propertyId.toString(),
+            '"}, ',
+            '{"trait_type": "Propri\\u00e9taire", "value": "',
+            _addressToString(landlord),
+            '"}, ',
+            '{"trait_type": "Statut", "value": "',
+            _getStatusString(status),
+            '"}, ',
+            '{"trait_type": "Montant Initial", "value": "',
+            amount.toString(),
+            '"}, ',
+            '{"trait_type": "Date de Paiement", "value": "',
+            payment_timestamp.toString(),
+            '"}, ',
+            '{"trait_type": "Montant Rembours\\u00e9", "value": "',
+            finalAmount.toString(),
+            '"}, ',
+            '{"trait_type": "Date de Remboursement", "value": "',
+            refund_timestamp.toString(),
+            '"}'
         );
 
         // Fermer le JSON
-        json = string(abi.encodePacked(json, "]}"));
+        json = string.concat(json, "]}");
 
         // Encoder le JSON en Base64 et le retourner directement dans l'URI
         bytes memory jsonBytes = bytes(json);
         string memory base64Json = Base64.encode(jsonBytes);
 
+        return string.concat("data:application/json;base64,", base64Json);
+    }
+
+    /// @notice Génère l'image SVG incluant l'ID de caution
+    /// @dev Crée un SVG dynamique avec l'ID et le montant de la caution
+    /// @param _depositId ID de la caution à afficher sur l'image
+    /// @param _amount Montant de la caution
+    /// @return Une chaîne contenant le SVG complet
+    function generateSVGImage(uint256 _depositId, uint256 _amount) internal pure returns (string memory) {
+        // Conversion du montant de wei en ETH de manière sécurisée
+        string memory amountInEth;
+        if (_amount > 0) {
+            // Diviser par 10^18 pour obtenir la valeur en ETH
+            uint256 ethWhole = _amount / 1 ether;
+
+            // Calculer les décimales (3 chiffres après la virgule)
+            uint256 decimalFactor = 1000;
+            uint256 ethDecimal = (_amount % 1 ether) / (1 ether / decimalFactor);
+
+            // Construire la chaîne avec 3 décimales
+            amountInEth = string.concat(
+                ethWhole.toString(),
+                ".",
+                ethDecimal < 10 ? "0" : "",
+                ethDecimal.toString(),
+                " ETH"
+            );
+        } else {
+            amountInEth = "0.000 ETH";
+        }
+
+        // Construire le SVG en utilisant string.concat
         return
-            string(
-                abi.encodePacked("data:application/json;base64,", base64Json)
+            string.concat(
+                '<svg width="500" height="500" xmlns="http://www.w3.org/2000/svg">',
+                '<rect width="100%" height="100%" fill="#7759F9" />',
+                '<circle cx="250" cy="170" r="150" fill="white" />',
+                '<text x="250" y="240" font-family="Arial" font-size="190" font-weight="bold" text-anchor="middle" fill="#7759F9">SD</text>',
+                '<text x="250" y="400" font-family="Arial" font-size="70" text-anchor="middle" fill="white">Caution #',
+                _depositId.toString(),
+                "</text>",
+                '<text x="250" y="460" font-family="Arial" font-size="35" text-anchor="middle" fill="white">Montant : ',
+                amountInEth,
+                "</text>",
+                "</svg>"
             );
     }
 
@@ -220,20 +264,10 @@ contract DepositNFT is ERC721Enumerable, Ownable {
     }
 
     /// @notice Convertit une adresse en string
+    /// @dev Convertit l'adresse en une chaîne hexadécimale de 20 caractères en utilisant la bibliothèque Strings
     function _addressToString(
         address _addr
     ) internal pure returns (string memory) {
         return Strings.toHexString(uint256(uint160(_addr)), 20);
-    }
-
-    /// @notice Formate un timestamp Unix en date lisible
-    /// @dev Convertit le timestamp en format DD/MM/YYYY
-    function _formatTimestamp(
-        uint256 timestamp
-    ) internal pure returns (string memory) {
-        // Cette fonction est simplifiée - idéalement, on utiliserait une bibliothèque complète
-        // pour gérer les dates correctement, mais pour Solidity c'est complexe
-        // Retourne simplement le timestamp pour l'instant
-        return timestamp.toString();
     }
 }
