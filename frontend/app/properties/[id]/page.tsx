@@ -34,14 +34,13 @@ export default function PropertyDetails() {
   const { toast } = useToast()
   const [property, setProperty] = useState<any>(null)
   const [isLandlord, setIsLandlord] = useState(false)
-  const [isAuthorizedTenant, setIsAuthorizedTenant] = useState(false)
 
   // État pour afficher le message Kleros
   const [showKlerosMessage, setShowKlerosMessage] = useState(false)
 
   // Transaction status
   const [transactionStatus, setTransactionStatus] = useState<"idle" | "pending" | "confirming" | "success" | "error">("idle")
-  const [txType, setTxType] = useState<"delete" | "deposit" | "refund" | "dispute" | "resolve" | "upload" | "create" | null>(null)
+  const [txType, setTxType] = useState<"delete" | "refund" | "dispute" | "resolve" | "upload" | "create" | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<string | null>(null)
 
@@ -212,12 +211,8 @@ export default function PropertyDetails() {
         setTxHash(null);
       }
 
-      // Vérifier à nouveau si l'utilisateur est autorisé après changement d'adresse
-      const authorizedCode = localStorage.getItem(`property_${propertyId}_validated_code`);
-      setIsAuthorizedTenant(!!authorizedCode);
-
       // Si les données de propriété sont déjà chargées et que l'utilisateur n'est pas autorisé, rediriger
-      if (property && property.landlord.toLowerCase() !== address?.toLowerCase() && !authorizedCode) {
+      if (property && property.landlord.toLowerCase() !== address?.toLowerCase()) {
         router.push(`/dashboard`);
       }
     }
@@ -242,13 +237,6 @@ export default function PropertyDetails() {
 
   const { isLoading: isValidateConfirming, isSuccess: isValidateConfirmed, error: validateError } = useWaitForTransactionReceipt({
     hash: validateHash,
-  })
-
-  // Pay deposit (for tenant)
-  const { data: depositHash, isPending: isDepositPending, writeContract: writeDepositContract } = useWriteContract()
-
-  const { isLoading: isDepositConfirming, isSuccess: isDepositConfirmed, error: depositConfirmError } = useWaitForTransactionReceipt({
-    hash: depositHash,
   })
 
   // Refund deposit (for landlord)
@@ -286,181 +274,6 @@ export default function PropertyDetails() {
     hash: uploadHash,
   })
 
-  // Update transaction status based on contract states
-  useEffect(() => {
-    if (txType === "delete") {
-      if (isDeletePending) {
-        setTransactionStatus("pending");
-      } else if (isDeleteConfirming) {
-        setTransactionStatus("confirming");
-      } else if (isDeleteConfirmed) {
-        setTransactionStatus("success");
-      }
-
-      if (deleteHash) {
-        setTxHash(deleteHash);
-      }
-
-      if (deleteError) {
-        setTransactionStatus("error");
-        setError("La transaction de suppression a échoué. Veuillez réessayer.");
-      }
-    } else if (txType === "validate") {
-      if (isValidatePending) {
-        setTransactionStatus("pending");
-      } else if (isValidateConfirming) {
-        setTransactionStatus("confirming");
-      } else if (isValidateConfirmed) {
-        setTransactionStatus("success");
-        
-        // Rediriger vers la page QR-code avec le code précedemment généré
-        const depositCode = depositDetails?.depositCode || localStorage.getItem(`property_${propertyId}_deposit_code`);
-        if (depositCode) {
-          router.push(`/properties/${propertyId}/qr-code?useExistingCode=true`);
-        }
-      }
-
-      if (validateHash) {
-        setTxHash(validateHash);
-      }
-
-      if (validateError) {
-        setTransactionStatus("error");
-        setError("La transaction de validation de caution a échoué. Veuillez réessayer.");
-      }
-    } else if (txType === "deposit") {
-      if (isDepositPending) {
-        setTransactionStatus("pending");
-      } else if (isDepositConfirming) {
-        setTransactionStatus("confirming");
-      } else if (isDepositConfirmed) {
-        setTransactionStatus("success");
-      }
-
-      if (depositHash) {
-        setTxHash(depositHash);
-      }
-
-      if (depositConfirmError) {
-        setTransactionStatus("error");
-        setError("La transaction de paiement de caution a échoué. Veuillez réessayer.");
-      }
-    } else if (txType === "refund") {
-      console.log("État de la transaction de remboursement:", {
-        isRefundPending,
-        isRefundConfirming,
-        isRefundConfirmed,
-        refundHash,
-        error: refundError || writeRefundError
-      });
-
-      if (isRefundPending) {
-        setTransactionStatus("pending");
-      } else if (isRefundConfirming) {
-        setTransactionStatus("confirming");
-      } else if (isRefundConfirmed) {
-        setTransactionStatus("success");
-      }
-
-      if (refundHash) {
-        setTxHash(refundHash);
-      }
-
-      if (refundError || writeRefundError) {
-        console.error("Erreur détaillée de remboursement:", refundError || writeRefundError);
-        setTransactionStatus("error");
-        setError("La transaction de remboursement a échoué. Veuillez réessayer.");
-      }
-    } else if (txType === "dispute") {
-      if (isDisputePending) {
-        setTransactionStatus("pending");
-      } else if (isDisputeConfirming) {
-        setTransactionStatus("confirming");
-      } else if (isDisputeConfirmed) {
-        setTransactionStatus("success");
-      }
-
-      if (disputeHash) {
-        setTxHash(disputeHash);
-      }
-
-      if (disputeError) {
-        setTransactionStatus("error");
-        setError("La transaction d'ouverture de litige a échoué. Veuillez réessayer.");
-      }
-    } else if (txType === "resolve") {
-      if (isResolvePending) {
-        setTransactionStatus("pending");
-      } else if (isResolveConfirming) {
-        setTransactionStatus("confirming");
-      } else if (isResolveConfirmed) {
-        setTransactionStatus("success");
-      }
-
-      if (resolveHash) {
-        setTxHash(resolveHash);
-      }
-
-      if (resolveError) {
-        setTransactionStatus("error");
-        setError("La transaction de résolution de litige a échoué. Veuillez réessayer.");
-      }
-    } else if (txType === "create") {
-      if (isCreatePending) {
-        setTransactionStatus("pending");
-      } else if (isCreateConfirming) {
-        setTransactionStatus("confirming");
-      } else if (isCreateConfirmed) {
-        setTransactionStatus("success");
-        // Afficher le formulaire de demande de caution au lieu de rediriger vers la page QR
-        setShowDepositRequestForm(true);
-        
-        // Forcer le rafraîchissement des données pour obtenir le nouveau depositId
-        refetch();
-        if (refetchDepositData) {
-          refetchDepositData();
-        }
-      }
-
-      if (createHash) {
-        setTxHash(createHash);
-      }
-
-      if (createError) {
-        setTransactionStatus("error");
-        setError("La transaction de création de caution a échoué. Veuillez réessayer.");
-      }
-    } else if (txType === "upload") {
-      if (isUploadPending) {
-        setTransactionStatus("pending");
-      } else if (isUploadConfirming) {
-        setTransactionStatus("confirming");
-      } else if (isUploadConfirmed) {
-        setTransactionStatus("success");
-      }
-
-      if (uploadHash) {
-        setTxHash(uploadHash);
-      }
-
-      if (uploadError) {
-        setTransactionStatus("error");
-        setError("La transaction d'upload a échoué. Veuillez réessayer.");
-      }
-    }
-  }, [
-    txType,
-    isDeletePending, isDeleteConfirming, isDeleteConfirmed, deleteHash, deleteError,
-    isRefundPending, isRefundConfirming, isRefundConfirmed, refundHash, refundError, writeRefundError,
-    isDisputePending, isDisputeConfirming, isDisputeConfirmed, disputeHash, disputeError,
-    isResolvePending, isResolveConfirming, isResolveConfirmed, resolveHash, resolveError,
-    isUploadPending, isUploadConfirming, isUploadConfirmed, uploadHash, uploadError,
-    isCreatePending, isCreateConfirming, isCreateConfirmed, createHash, createError,
-    isValidatePending, isValidateConfirming, isValidateConfirmed, validateHash, validateError,
-    isDepositPending, isDepositConfirming, isDepositConfirmed, depositHash, depositConfirmError,
-    router, propertyId, depositDetails
-  ]);
-
   // Reset transaction tracking
   const resetTransaction = () => {
     setTransactionStatus("idle");
@@ -482,41 +295,203 @@ export default function PropertyDetails() {
     }
   };
 
-  // Function to handle redirect after deposit success
-  const handleDepositSuccess = () => {
-    // Redirect to deposits list
-    router.push("/deposits");
-  };
-
-  const handlePayDeposit = async () => {
-    if (!property || !effectiveDepositId || !depositDetails?.amount) return
-
-    try {
-      setTransactionStatus("pending");
-      setTxType("deposit");
-      setError(null);
-
-      // Récupérer le code validé
-      const depositCode = localStorage.getItem(`property_${propertyId}_validated_code`);
-      if (!depositCode) {
-        setTransactionStatus("error");
-        setError("Code d'accès non trouvé. Veuillez valider le code d'accès fourni par le propriétaire.");
-        return;
+  // Update transaction status based on contract states
+  useEffect(() => {
+    if (txType === "delete") {
+      if (isDeletePending) {
+        setTransactionStatus("pending");
+      } else if (isDeleteConfirming) {
+        setTransactionStatus("confirming");
+      } else if (isDeleteConfirmed) {
+        setTransactionStatus("success");
+        
+        // Pour la suppression, rediriger automatiquement après 2 secondes
+        setTimeout(() => {
+          router.push("/dashboard");
+        }, 1000);
       }
 
-      writeDepositContract({
-        address: CONTRACT_ADDRESS as `0x${string}`,
-        abi: SMART_DEPOSIT_ABI,
-        functionName: "payDeposit",
-        args: [BigInt(Number(effectiveDepositId)), depositCode],
-        value: parseEther(depositDetails.amount),
+      if (deleteHash) {
+        setTxHash(deleteHash);
+      }
+
+      if (deleteError) {
+        setTransactionStatus("error");
+        setError("La transaction de suppression a échoué. Veuillez réessayer.");
+      }
+    } else if (txType === "validate") {
+      if (isValidatePending) {
+        setTransactionStatus("pending");
+      } else if (isValidateConfirming) {
+        setTransactionStatus("confirming");
+      } else if (isValidateConfirmed) {
+        setTransactionStatus("success");
+        
+        // Attendre 2 secondes puis rediriger vers la page QR-code
+        setTimeout(() => {
+          const depositCode = depositDetails?.depositCode || localStorage.getItem(`property_${propertyId}_deposit_code`);
+          if (depositCode) {
+            router.push(`/properties/${propertyId}/qr-code?useExistingCode=true`);
+          }
+        }, 1000);
+      }
+
+      if (validateHash) {
+        setTxHash(validateHash);
+      }
+
+      if (validateError) {
+        setTransactionStatus("error");
+        setError("La transaction de validation de caution a échoué. Veuillez réessayer.");
+      }
+    } else if (txType === "refund") {
+      console.log("État de la transaction de remboursement:", {
+        isRefundPending,
+        isRefundConfirming,
+        isRefundConfirmed,
+        refundHash,
+        error: refundError || writeRefundError
       });
-    } catch (error) {
-      console.error("Erreur lors du versement de la caution:", error)
-      setTransactionStatus("error");
-      setError("Une erreur s'est produite lors de l'envoi de la transaction de caution.");
+
+      if (isRefundPending) {
+        setTransactionStatus("pending");
+      } else if (isRefundConfirming) {
+        setTransactionStatus("confirming");
+      } else if (isRefundConfirmed) {
+        setTransactionStatus("success");
+        
+        // Après 2 secondes, réinitialiser et rafraîchir les données
+        setTimeout(() => {
+          resetTransaction();
+        }, 1500);
+      }
+
+      if (refundHash) {
+        setTxHash(refundHash);
+      }
+
+      if (refundError || writeRefundError) {
+        console.error("Erreur détaillée de remboursement:", refundError || writeRefundError);
+        setTransactionStatus("error");
+        setError("La transaction de remboursement a échoué. Veuillez réessayer.");
+      }
+    } else if (txType === "dispute") {
+      if (isDisputePending) {
+        setTransactionStatus("pending");
+      } else if (isDisputeConfirming) {
+        setTransactionStatus("confirming");
+      } else if (isDisputeConfirmed) {
+        setTransactionStatus("success");
+        
+        // Après 2 secondes, réinitialiser et rafraîchir les données
+        setTimeout(() => {
+          resetTransaction();
+        }, 1500);
+      }
+
+      if (disputeHash) {
+        setTxHash(disputeHash);
+      }
+
+      if (disputeError) {
+        setTransactionStatus("error");
+        setError("La transaction d'ouverture de litige a échoué. Veuillez réessayer.");
+      }
+    } else if (txType === "resolve") {
+      if (isResolvePending) {
+        setTransactionStatus("pending");
+      } else if (isResolveConfirming) {
+        setTransactionStatus("confirming");
+      } else if (isResolveConfirmed) {
+        setTransactionStatus("success");
+        
+        // Après 2 secondes, réinitialiser, fermer le formulaire et rafraîchir
+        setTimeout(() => {
+          resetTransaction();
+          setShowRefundForm(false);
+        }, 1500);
+      }
+
+      if (resolveHash) {
+        setTxHash(resolveHash);
+      }
+
+      if (resolveError) {
+        setTransactionStatus("error");
+        setError("La transaction de résolution de litige a échoué. Veuillez réessayer.");
+      }
+    } else if (txType === "create") {
+      if (isCreatePending) {
+        setTransactionStatus("pending");
+      } else if (isCreateConfirming) {
+        setTransactionStatus("confirming");
+      } else if (isCreateConfirmed) {
+        setTransactionStatus("success");
+        
+        // Après 2 secondes, afficher le formulaire de dépôt et rafraîchir
+        setTimeout(() => {
+          setTransactionStatus("idle");
+          // Afficher le formulaire de demande de caution
+          setShowDepositRequestForm(true);
+          
+          // Forcer le rafraîchissement des données pour obtenir le nouveau depositId
+          refetch();
+          if (refetchDepositData) {
+            refetchDepositData();
+          }
+        }, 1500);
+      }
+
+      if (createHash) {
+        setTxHash(createHash);
+      }
+
+      if (createError) {
+        setTransactionStatus("error");
+        setError("La transaction de création de caution a échoué. Veuillez réessayer.");
+      }
+    } else if (txType === "upload") {
+      if (isUploadPending) {
+        setTransactionStatus("pending");
+      } else if (isUploadConfirming) {
+        setTransactionStatus("confirming");
+      } else if (isUploadConfirmed) {
+        setTransactionStatus("success");
+        
+        // Pour les uploads, disparaître automatiquement après 1 seconde
+        setTimeout(() => {
+          // Réinitialiser l'état de transaction
+          setTransactionStatus("idle");
+          setTxType(null);
+          setError(null);
+          setTxHash(null);
+          
+          // Au lieu d'appeler directement refetchFiles, on utilisera un état pour déclencher la mise à jour
+          // Quand les fichiers seront disponibles
+          setForceRefreshFiles(true);
+        }, 1000);
+      }
+
+      if (uploadHash) {
+        setTxHash(uploadHash);
+      }
+
+      if (uploadError) {
+        setTransactionStatus("error");
+        setError("La transaction d'upload a échoué. Veuillez réessayer.");
+      }
     }
-  }
+  }, [
+    txType,
+    isDeletePending, isDeleteConfirming, isDeleteConfirmed, deleteHash, deleteError,
+    isRefundPending, isRefundConfirming, isRefundConfirmed, refundHash, refundError, writeRefundError,
+    isDisputePending, isDisputeConfirming, isDisputeConfirmed, disputeHash, disputeError,
+    isResolvePending, isResolveConfirming, isResolveConfirmed, resolveHash, resolveError,
+    isUploadPending, isUploadConfirming, isUploadConfirmed, uploadHash, uploadError,
+    isCreatePending, isCreateConfirming, isCreateConfirmed, createHash, createError,
+    isValidatePending, isValidateConfirming, isValidateConfirmed, validateHash, validateError,
+    router, propertyId, depositDetails, refetch, refetchDepositData
+  ]);
 
   const handleDeleteProperty = async () => {
     console.log("Suppression du bien:", propertyId);
@@ -579,6 +554,7 @@ export default function PropertyDetails() {
   }
 
   const [files, setFiles] = useState<FileInfo[]>([]);
+  const [forceRefreshFiles, setForceRefreshFiles] = useState(false);
   
   // États pour suivre la présence des documents obligatoires
   const [hasLeaseDoc, setHasLeaseDoc] = useState(false);
@@ -624,8 +600,8 @@ export default function PropertyDetails() {
   
   // Rafraîchir les fichiers après un upload réussi ou après qu'une caution soit créée
   useEffect(() => {
-    if ((transactionStatus === "success" && txType === "upload") ||
-        (transactionStatus === "success" && txType === "create")) {
+    // Ne pas exécuter ce useEffect pour les uploads, car c'est déjà géré par le timer dans le useEffect principal
+    if (transactionStatus === "success" && txType === "create") {
       refetchFiles();
       // Réinitialiser le message de succès d'upload
       setUploadSuccess(null);
@@ -644,11 +620,19 @@ export default function PropertyDetails() {
     if (uploadSuccess) {
       const timer = setTimeout(() => {
         setUploadSuccess(null);
-      }, 5000);
+      }, 1500);
       
       return () => clearTimeout(timer);
     }
   }, [uploadSuccess]);
+
+  // Ajouter un useEffect pour gérer le refresh forcé
+  useEffect(() => {
+    if (forceRefreshFiles && refetchFiles) {
+      refetchFiles();
+      setForceRefreshFiles(false);
+    }
+  }, [forceRefreshFiles, refetchFiles]);
 
   const handleValidateDeposit = () => {
     // Vérifier que le montant est valide
@@ -984,8 +968,6 @@ export default function PropertyDetails() {
     switch (txType) {
       case "delete":
         return "Bien supprimé avec succès!";
-      case "deposit":
-        return "Caution versée avec succès!";
       case "refund":
         return "Caution remboursée avec succès!";
       case "dispute":
@@ -1020,7 +1002,7 @@ export default function PropertyDetails() {
     if (showKlerosMessage) {
       const timer = setTimeout(() => {
         setShowKlerosMessage(false);
-      }, 4000);
+      }, 3000);
 
       return () => clearTimeout(timer);
     }
@@ -1203,27 +1185,12 @@ export default function PropertyDetails() {
               )}
             </CardContent>
             <CardFooter className="flex justify-end gap-2">
-              {transactionStatus === "success" && (
-                <>
-                  {txType === "deposit" ? (
-                    <Button onClick={handleDepositSuccess} variant="default">
-                      Voir mes cautions
-                    </Button>
-                  ) : txType === "delete" ? (
-                    <Button onClick={() => router.push("/dashboard")} variant="default">
-                      Retour au tableau de bord
-                    </Button>
-                  ) : (
-                    <Button onClick={resetTransaction} variant="outline">
-                      Continuer
-                    </Button>
-                  )}
-                </>
-              )}
-              {transactionStatus === "error" && (
-                <Button onClick={resetTransaction} variant="outline">
-                  Réessayer
-                </Button>
+              {transactionStatus === "success" ? null : (
+                transactionStatus === "error" && (
+                  <Button onClick={resetTransaction} variant="outline">
+                    Réessayer
+                  </Button>
+                )
               )}
             </CardFooter>
           </Card>
@@ -1755,76 +1722,6 @@ export default function PropertyDetails() {
               </CardContent>
             </Card>
           </div>
-        ) : null}
-
-        {/* Section du locataire */}
-        {!isLandlord && isAuthorizedTenant && (transactionStatus === "idle" || transactionStatus === "error") && !showDepositRequestForm ? (
-          <Card className="mt-8">
-            <CardHeader>
-              <CardTitle>Versement de caution</CardTitle>
-              <CardDescription>Veuillez verser la caution pour ce bien</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {!depositDetails || depositDetails.status !== DepositStatus.PENDING ? (
-                <div>
-                  {depositDetails && depositDetails.status === DepositStatus.PAID ? (
-                    <div className="p-4 bg-green-50 border border-green-200 rounded-md">
-                      <p className="text-green-700 flex items-center">
-                        <CheckCircle className="mr-2 h-5 w-5" />
-                        Vous avez déjà versé la caution pour ce bien
-                      </p>
-                      <p className="text-sm text-gray-600 mt-2">
-                        Montant versé: {depositDetails.amount} ETH
-                      </p>
-                      {depositDetails.paymentDate && (
-                        <p className="text-sm text-gray-600 mt-1">
-                          Date de versement: {new Date(Number(depositDetails.paymentDate) * 1000).toLocaleDateString('fr-FR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      <p className="text-yellow-600">Le propriétaire n'a pas encore activé la demande de caution pour ce bien.</p>
-                      <p className="text-sm text-gray-500 mt-2">Statut actuel: {depositDetails ? depositDetails.statusText : 'Non défini'}</p>
-                      {depositDetails && depositDetails.creationDate ? (
-                        <p className="text-sm text-gray-500 mt-1">
-                          Date de création: {new Date(Number(depositDetails.creationDate) * 1000).toLocaleDateString('fr-FR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
-                      ) : null}
-                    </>
-                  )}
-                </div>
-              ) : (
-                <Button
-                  onClick={handlePayDeposit}
-                  className="mt-6"
-                  size="sm"
-                  disabled={isFormDisabled}
-                >
-                  {isFormDisabled && txType === "deposit" ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      En cours...
-                    </>
-                  ) : (
-                    `Verser la caution (${depositDetails?.amount || "0"} ETH)`
-                  )}
-                </Button>
-              )}
-            </CardContent>
-          </Card>
         ) : null}
 
         {/* Formulaire de remboursement */}

@@ -11,7 +11,6 @@ import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
 import { QrCode, Wallet, Calendar, Home, MapPin, User, ArrowDownCircle, ArrowUpCircle, AlertTriangle, Coins, CheckCircle, XCircle, Clock, Loader2, FileText, ClipboardSignature, DoorOpen, DoorClosed, Image, Gem } from "lucide-react"
-import { ethers } from "ethers"
 
 // Composant pour afficher les détails d'une propriété même si elle n'est pas dans l'état properties
 const PropertyDetails = ({ propertyId, existingProperty }: { propertyId: number, existingProperty: any }) => {
@@ -273,46 +272,51 @@ export default function Deposits() {
     }
   }, [depositNFTAddressData]);
 
-  // Si des dépôts sont chargés, rechercher les token IDs pour les cautions payées
+  // Filtrer les dépôts "mintés" dans un useEffect pour éviter les calculs à chaque rendu
+  const [mintedDeposits, setMintedDeposits] = useState<any[]>([]);
+
+  // Met à jour la liste des dépôts mintés quand les dépôts changent
   useEffect(() => {
-    const fetchTokenIds = async () => {
-      if (depositNFTAddress && deposits.length > 0) {
-        try {
-          // On utilise l'ABI minimal pour interagir avec le contrat DepositNFT
-          const depositNFTAbi = [
-            "function getTokenIdFromDeposit(uint256 _depositId) view returns (uint256)"
-          ];
+    const filtered = deposits.filter(d => d.statusCode >= DepositStatus.PAID);
+    setMintedDeposits(filtered);
+  }, [deposits]);
+  
+  // Utiliser useReadContracts pour récupérer les token IDs en parallèle
+  const { data: tokenIdsData } = useReadContracts({
+    contracts: mintedDeposits.map((deposit) => ({
+      address: depositNFTAddress as `0x${string}`,
+      abi: [{
+        name: "getTokenIdFromDeposit",
+        type: "function",
+        stateMutability: "view",
+        inputs: [{ name: "_depositId", type: "uint256" }],
+        outputs: [{ name: "", type: "uint256" }]
+      }],
+      functionName: "getTokenIdFromDeposit",
+      args: [BigInt(deposit.id)],
+    })),
+    enabled: Boolean(depositNFTAddress) && mintedDeposits.length > 0,
+  });
+
+  // Traiter les résultats de la récupération des token IDs
+  useEffect(() => {
+    if (tokenIdsData && mintedDeposits.length > 0) {
+      const tokenIdsMap: {[key: number]: string} = {};
+      
+      tokenIdsData.forEach((result, index) => {
+        if (result.status === "success" && result.result) {
+          const depositId = mintedDeposits[index].id;
+          const tokenId = result.result.toString();
           
-          const provider = new ethers.BrowserProvider(window.ethereum);
-          const depositNFTContract = new ethers.Contract(depositNFTAddress, depositNFTAbi, provider);
-          
-          const tokenIdsMap: {[key: number]: string} = {};
-          
-          // Inclure toutes les cautions qui ont été au moins payées (statut >= PAID)
-          const mintedDeposits = deposits.filter(d => d.statusCode >= DepositStatus.PAID);
-          
-          for (const deposit of mintedDeposits) {
-            try {
-              const tokenIdBigInt = await depositNFTContract.getTokenIdFromDeposit(deposit.id);
-              if (tokenIdBigInt && tokenIdBigInt.toString() !== "0") {
-                tokenIdsMap[deposit.id] = tokenIdBigInt.toString();
-              }
-            } catch (error) {
-              console.error(`Erreur pour le dépôt ${deposit.id}:`, error);
-            }
+          if (tokenId && tokenId !== "0") {
+            tokenIdsMap[depositId] = tokenId;
           }
-          
-          setTokenIds(tokenIdsMap);
-        } catch (error) {
-          console.error("Erreur lors de la récupération des token IDs:", error);
         }
-      }
-    };
-    
-    if (typeof window !== 'undefined' && window.ethereum) {
-      fetchTokenIds();
+      });
+      
+      setTokenIds(tokenIdsMap);
     }
-  }, [depositNFTAddress, deposits]);
+  }, [tokenIdsData, mintedDeposits]);
 
   const getDepositStatusBadge = (statusCode: number) => {
     switch (statusCode) {

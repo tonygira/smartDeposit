@@ -170,7 +170,7 @@ export default function NFTDetails() {
                     <span className="font-medium">Adresse du contrat :</span> 
                     <div className="flex items-center">
                       <span className="mr-2 bg-white px-2 py-1 rounded border">
-                        {depositNFTAddress ? shortenAddress(depositNFTAddress as string) : '...'}
+                        {depositNFTAddress ? depositNFTAddress as string : '...'}
                       </span>
                       <TooltipProvider>
                         <Tooltip>
