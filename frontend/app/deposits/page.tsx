@@ -10,9 +10,8 @@ import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getDepositStatusText, DepositStatu
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
-import { QrCode, Wallet, Calendar, Home, MapPin, User, ArrowDownCircle, ArrowUpCircle, AlertTriangle, Coins, CheckCircle, XCircle, Clock, Loader2, FileText, ClipboardSignature, DoorOpen, DoorClosed, Image } from "lucide-react"
+import { QrCode, Wallet, Calendar, Home, MapPin, User, ArrowDownCircle, ArrowUpCircle, AlertTriangle, Coins, CheckCircle, XCircle, Clock, Loader2, FileText, ClipboardSignature, DoorOpen, DoorClosed, Image, Gem } from "lucide-react"
 import { ethers } from "ethers"
-import AddNFTButton from "./add-nft-button"
 
 // Composant pour afficher les détails d'une propriété même si elle n'est pas dans l'état properties
 const PropertyDetails = ({ propertyId, existingProperty }: { propertyId: number, existingProperty: any }) => {
@@ -289,13 +288,15 @@ export default function Deposits() {
           
           const tokenIdsMap: {[key: number]: string} = {};
           
-          // Uniquement pour les dépôts payés
-          const paidDeposits = deposits.filter(d => d.statusCode === DepositStatus.PAID);
+          // Inclure toutes les cautions qui ont été au moins payées (statut >= PAID)
+          const mintedDeposits = deposits.filter(d => d.statusCode >= DepositStatus.PAID);
           
-          for (const deposit of paidDeposits) {
+          for (const deposit of mintedDeposits) {
             try {
               const tokenIdBigInt = await depositNFTContract.getTokenIdFromDeposit(deposit.id);
-              tokenIdsMap[deposit.id] = tokenIdBigInt.toString();
+              if (tokenIdBigInt && tokenIdBigInt.toString() !== "0") {
+                tokenIdsMap[deposit.id] = tokenIdBigInt.toString();
+              }
             } catch (error) {
               console.error(`Erreur pour le dépôt ${deposit.id}:`, error);
             }
@@ -482,12 +483,12 @@ export default function Deposits() {
                       </CardTitle>
                       <div className="flex items-center space-x-4">
                         {getDepositStatusBadge(deposit.statusCode)}
-                        {depositNFTAddress && tokenIds[deposit.id] && deposit.statusCode === DepositStatus.PAID && (
-                          <AddNFTButton 
-                            nftAddress={depositNFTAddress}
-                            tokenId={tokenIds[deposit.id]}
-                            userAddress={address || ""}
-                          />
+                        {depositNFTAddress && tokenIds[deposit.id] && (
+                          <Link href={`/deposits/nft/${tokenIds[deposit.id]}`}>
+                            <Button variant="ghost" size="icon" className="rounded-full">
+                              <Gem className="h-5 w-5 text-purple-500" />
+                            </Button>
+                          </Link>
                         )}
                       </div>
                     </div>

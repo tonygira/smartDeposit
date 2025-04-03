@@ -120,6 +120,12 @@ contract DepositNFT is ERC721Enumerable, Ownable {
         return _tokenIds;
     }
 
+    /// ************************************************************
+    /// TONY TODO :
+    /// To refresh token metadata on OpenSea, you can emit on-chain events as defined in ERC-4906:
+    /// event MetadataUpdate(uint256 _tokenId);
+    /// ************************************************************
+
     /// @notice Retourne l'URI des métadonnées du NFT
     /// @dev Génère des métadonnées JSON en base64
     /// @param _tokenId ID du token NFT
