@@ -167,7 +167,7 @@ export default function NFTDetails() {
                 
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">Adresse du contrat :</span> 
+                    <span className="font-medium">Adresse :</span> 
                     <div className="flex items-center">
                       <span className="mr-2 bg-white px-2 py-1 rounded border">
                         {depositNFTAddress ? depositNFTAddress as string : '...'}

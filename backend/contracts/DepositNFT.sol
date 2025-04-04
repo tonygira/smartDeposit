@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/Base64.sol";
@@ -10,8 +10,8 @@ import "./SmartDeposit.sol";
 /// @title DepositNFT - NFT représentant une caution locative
 /// @author Tony Girardo
 /// @notice Ce contrat gère les NFTs représentant les cautions locatives
-/// @dev Hérite de OpenZeppelin ERC721Enumerable pour la gestion des NFTs avec fonctionnalités d'énumération
-contract DepositNFT is ERC721Enumerable, Ownable {
+/// @dev Implémentation minimale utilisant ERC721 standard
+contract DepositNFT is ERC721, Ownable {
     using Strings for uint256;
 
     address private _smartDepositAddress;
@@ -79,6 +79,34 @@ contract DepositNFT is ERC721Enumerable, Ownable {
         _safeMint(_owner, newTokenId);
 
         emit DepositNFTMinted(_depositId, newTokenId, _owner);
+    }
+
+    // Implémentation des restrictions Soul Bound Token (SBT)
+    // Nous surchargeons les fonctions publiques qui sont virtual
+
+    function transferFrom(address,address,uint256) public virtual override {
+        revert("SBT: transfer not allowed");
+    }
+
+    // Surcharge uniquement la version virtuelle de safeTransferFrom (celle avec data)
+    function safeTransferFrom(address,address,uint256,bytes memory) public virtual override {
+        revert("SBT: transfer not allowed");
+    }
+
+    function approve(address, uint256) public pure override {
+        revert("SBT: approve not allowed");
+    }
+
+    function setApprovalForAll(address, bool) public pure override {
+        revert("SBT: setApprovalForAll not allowed");
+    }
+
+    event Burned(address indexed owner, uint256 indexed tokenId);
+
+    function burn(uint256 tokenId) external {
+        require(ownerOf(tokenId) == msg.sender, "SBT: Only owner can burn");
+        emit Burned(msg.sender, tokenId);
+        _burn(tokenId);
     }
 
     /// @notice Récupère l'ID du token associé à une caution
@@ -149,8 +177,8 @@ contract DepositNFT is ERC721Enumerable, Ownable {
                 depositId
             );
 
-        // Générer l'image SVG avec l'ID de la caution
-        string memory svgImage = generateSVGImage(depositId, amount);
+        // Générer l'image SVG avec l'ID de la caution et le statut pour la couleur
+        string memory svgImage = generateSVGImage(depositId, amount, status);
         string memory encodedSvg = Base64.encode(bytes(svgImage));
         string memory imageUri = string.concat(
             "data:image/svg+xml;base64,",
@@ -205,41 +233,69 @@ contract DepositNFT is ERC721Enumerable, Ownable {
         return string.concat("data:application/json;base64,", base64Json);
     }
 
-    /// @notice Génère l'image SVG incluant l'ID de caution
+    /// @notice Génère l'image SVG incluant l'ID de caution avec couleur adaptée au statut
     /// @dev Crée un SVG dynamique avec l'ID et le montant de la caution
     /// @param _depositId ID de la caution à afficher sur l'image
     /// @param _amount Montant de la caution
+    /// @param _status Statut de la caution pour déterminer la couleur
     /// @return Une chaîne contenant le SVG complet
-    function generateSVGImage(uint256 _depositId, uint256 _amount) internal pure returns (string memory) {
+    function generateSVGImage(
+        uint256 _depositId,
+        uint256 _amount,
+        uint256 _status
+    ) internal pure returns (string memory) {
         // Conversion du montant de wei en ETH de manière sécurisée
         string memory amountInEth;
         if (_amount > 0) {
             // Diviser par 10^18 pour obtenir la valeur en ETH
             uint256 ethWhole = _amount / 1 ether;
 
-            // Calculer les décimales (3 chiffres après la virgule)
-            uint256 decimalFactor = 1000;
-            uint256 ethDecimal = (_amount % 1 ether) / (1 ether / decimalFactor);
+            // Calculer les décimales (4 chiffres après la virgule)
+            uint256 decimalFactor = 10000;
+            uint256 ethDecimal = (_amount % 1 ether) /
+                (1 ether / decimalFactor);
 
-            // Construire la chaîne avec 3 décimales
+            // Construire la chaîne avec 4 décimales
             amountInEth = string.concat(
                 ethWhole.toString(),
                 ".",
                 ethDecimal < 10 ? "0" : "",
+                ethDecimal < 100 ? "0" : "",
+                ethDecimal < 1000 ? "0" : "",
                 ethDecimal.toString(),
                 " ETH"
             );
         } else {
-            amountInEth = "0.000 ETH";
+            amountInEth = "0.0000 ETH";
         }
 
-        // Construire le SVG en utilisant string.concat
+        // Sélection de la couleur en fonction du statut
+        // PAID(1) => violet, REFUNDED(5) => vert, PARTIALLY_REFUNDED(4) => jaune, RETAINED(3) => rouge
+        string memory backgroundColor;
+        if (_status == 5) {
+            // REFUNDED
+            backgroundColor = "#25a244"; // Vert
+        } else if (_status == 4) {
+            // PARTIALLY_REFUNDED
+            backgroundColor = "#ffbb00"; // Jaune
+        } else if (_status == 3) {
+            // RETAINED
+            backgroundColor = "#e63946"; // Rouge
+        } else {
+            backgroundColor = "#7759F9"; // Violet (couleur par défaut pour PAID et autres statuts)
+        }
+
+        // Construire le SVG en utilisant string.concat avec la couleur adaptée
         return
             string.concat(
                 '<svg width="500" height="500" xmlns="http://www.w3.org/2000/svg">',
-                '<rect width="100%" height="100%" fill="#7759F9" />',
+                '<rect width="100%" height="100%" fill="',
+                backgroundColor,
+                '" />',
                 '<circle cx="250" cy="170" r="150" fill="white" />',
-                '<text x="250" y="240" font-family="Arial" font-size="190" font-weight="bold" text-anchor="middle" fill="#7759F9">SD</text>',
+                '<text x="250" y="240" font-family="Arial" font-size="190" font-weight="bold" text-anchor="middle" fill="',
+                backgroundColor,
+                '">SD</text>',
                 '<text x="250" y="400" font-family="Arial" font-size="70" text-anchor="middle" fill="white">Caution #',
                 _depositId.toString(),
                 "</text>",

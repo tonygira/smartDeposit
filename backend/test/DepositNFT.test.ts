@@ -201,5 +201,184 @@ describe("DepositNFT", function () {
       // TODO : tests SVG
 
     });
+
+    it("Should generate SVG with correct ID, amount and color based on status", async function () {
+      // Créer une propriété
+      await smartDeposit.connect(landlord).createProperty("Test Property1", "Test Location 1");
+      const propertyId1 = 1;
+      await smartDeposit.connect(landlord).createProperty("Test Property2", "Test Location 2");
+      const propertyId2 = 2;
+      await smartDeposit.connect(landlord).createProperty("Test Property3", "Test Location 3");
+      const propertyId3 = 3;
+      await smartDeposit.connect(landlord).createProperty("Test Property4", "Test Location 4");
+      const propertyId4 = 4;
+
+      // Créer et payer différentes cautions pour tester les statuts
+      async function createAndPayDeposit(propertyId: number, depositCode: string, amount: bigint) {
+        await smartDeposit.connect(landlord).createDeposit(propertyId, depositCode);
+        const depositId = await smartDeposit.getDepositIdFromProperty(propertyId);
+        await smartDeposit.connect(landlord).setDepositAmount(depositId, amount);
+        await smartDeposit.connect(tenant).payDeposit(depositId, depositCode, { value: amount });
+        return depositId;
+      }
+
+      // 1. Caution payée (PAID - status 1) - Violet
+      const paidDepositId = await createAndPayDeposit(propertyId1, "DEPOSIT1", ethers.parseEther("0.1234"));
+      const paidTokenId = await depositNFT.getTokenIdFromDeposit(paidDepositId);
+      const paidTokenURI = await depositNFT.tokenURI(paidTokenId);
+      
+      // 2. Caution retenue (RETAINED - status 3) - Rouge
+      const retainedDepositId = await createAndPayDeposit(propertyId2, "DEPOSIT2", ethers.parseEther("0.5"));
+      await smartDeposit.connect(landlord).initiateDispute(retainedDepositId);
+      await smartDeposit.connect(landlord).resolveDispute(retainedDepositId, 0n); // 0 refunded = RETAINED
+      const retainedTokenId = await depositNFT.getTokenIdFromDeposit(retainedDepositId);
+      const retainedTokenURI = await depositNFT.tokenURI(retainedTokenId);
+      
+      // 3. Caution partiellement remboursée (PARTIALLY_REFUNDED - status 4) - Jaune
+      const partialDepositId = await createAndPayDeposit(propertyId3, "DEPOSIT3", ethers.parseEther("1.0"));
+      await smartDeposit.connect(landlord).initiateDispute(partialDepositId);
+      await smartDeposit.connect(landlord).resolveDispute(partialDepositId, ethers.parseEther("0.5")); // 50% refunded
+      const partialTokenId = await depositNFT.getTokenIdFromDeposit(partialDepositId);
+      const partialTokenURI = await depositNFT.tokenURI(partialTokenId);
+      
+      // 4. Caution remboursée (REFUNDED - status 5) - Vert
+      const refundedDepositId = await createAndPayDeposit(propertyId4, "DEPOSIT4", ethers.parseEther("0.25"));
+      await smartDeposit.connect(landlord).refundDeposit(refundedDepositId);
+      const refundedTokenId = await depositNFT.getTokenIdFromDeposit(refundedDepositId);
+      const refundedTokenURI = await depositNFT.tokenURI(refundedTokenId);
+      
+      // Fonction utilitaire pour décoder l'URI et extraire le SVG
+      function decodeSVG(tokenURI: string) {
+        const base64Json = tokenURI.replace("data:application/json;base64,", "");
+        const jsonData = JSON.parse(Buffer.from(base64Json, 'base64').toString('utf-8'));
+        const base64SVG = jsonData.image.replace("data:image/svg+xml;base64,", "");
+        return Buffer.from(base64SVG, 'base64').toString('utf-8');
+      }
+      
+      // Extraire les SVGs
+      const paidSVG = decodeSVG(paidTokenURI);
+      const retainedSVG = decodeSVG(retainedTokenURI);
+      const partialSVG = decodeSVG(partialTokenURI);
+      const refundedSVG = decodeSVG(refundedTokenURI);
+      
+      // Vérifier le contenu des SVGs
+      
+      // 1. Vérifier les IDs de caution et montants
+      expect(paidSVG).to.include(`Caution #${paidDepositId}`);
+      expect(paidSVG).to.include("0.1234 ETH"); // 4 décimales comme configuré
+      
+      expect(retainedSVG).to.include(`Caution #${retainedDepositId}`);
+      expect(retainedSVG).to.include("0.5000 ETH");
+      
+      expect(partialSVG).to.include(`Caution #${partialDepositId}`);
+      expect(partialSVG).to.include("1.0000 ETH");
+      
+      expect(refundedSVG).to.include(`Caution #${refundedDepositId}`);
+      expect(refundedSVG).to.include("0.2500 ETH");
+      
+      // 2. Vérifier les couleurs selon le statut
+      expect(paidSVG).to.include('fill="#7759F9"'); // Violet pour PAID
+      expect(retainedSVG).to.include('fill="#e63946"'); // Rouge pour RETAINED
+      expect(partialSVG).to.include('fill="#ffbb00"'); // Jaune pour PARTIALLY_REFUNDED
+      expect(refundedSVG).to.include('fill="#25a244"'); // Vert pour REFUNDED
+    });
+  });
+
+  describe("Soul-Bound Token tests", function () {
+    let tokenId: bigint;
+    
+    beforeEach(async function () {
+      // Créer une propriété
+      await smartDeposit.connect(landlord).createProperty("Test Property", "Test Location");
+      const propertyId = 1;
+      
+      // Créer et payer une caution
+      const depositCode = "123456";
+      await smartDeposit.connect(landlord).createDeposit(propertyId, depositCode);
+      const depositId = 1;
+      const depositAmount = ethers.parseEther("1");
+      await smartDeposit.connect(landlord).setDepositAmount(depositId, depositAmount);
+      
+      // Payer la caution pour recevoir le NFT
+      await smartDeposit.connect(tenant).payDeposit(depositId, depositCode, {
+        value: depositAmount,
+      });
+      
+      // Récupérer l'ID du token
+      tokenId = await depositNFT.getTokenIdFromDeposit(depositId);
+    });
+    
+    it("Should not allow transfers", async function () {
+      // Vérifier que le NFT appartient au locataire
+      expect(await depositNFT.ownerOf(tokenId)).to.equal(tenant.address);
+      
+      // Tenter un transferFrom direct
+      await expect(
+        depositNFT.connect(tenant).transferFrom(tenant.address, landlord.address, tokenId)
+      ).to.be.revertedWith("SBT: transfer not allowed");
+      
+      // Tenter un safeTransferFrom avec data
+      await expect(
+        depositNFT.connect(tenant)["safeTransferFrom(address,address,uint256,bytes)"](
+          tenant.address, 
+          landlord.address, 
+          tokenId,
+          "0x"
+        )
+      ).to.be.revertedWith("SBT: transfer not allowed");
+      
+      // Vérifier que le NFT est toujours détenu par le locataire
+      expect(await depositNFT.ownerOf(tokenId)).to.equal(tenant.address);
+    });
+    
+    it("Should not allow approve", async function () {
+      await expect(
+        depositNFT.connect(tenant).approve(landlord.address, tokenId)
+      ).to.be.revertedWith("SBT: approve not allowed");
+    });
+    
+    it("Should not allow setApprovalForAll", async function () {
+      await expect(
+        depositNFT.connect(tenant).setApprovalForAll(landlord.address, true)
+      ).to.be.revertedWith("SBT: setApprovalForAll not allowed");
+    });
+    
+    it("Should not allow burning by non-owner", async function () {
+      await expect(
+        depositNFT.connect(landlord).burn(tokenId)
+      ).to.be.revertedWith("SBT: Only owner can burn");
+      
+      // Vérifier que le NFT existe toujours
+      expect(await depositNFT.ownerOf(tokenId)).to.equal(tenant.address);
+    });
+    
+    it("Should allow burning by owner", async function () {
+      // Vérifier que le NFT appartient au locataire
+      expect(await depositNFT.ownerOf(tokenId)).to.equal(tenant.address);
+      
+      // Le tenant brûle son propre NFT
+      const tx = await depositNFT.connect(tenant).burn(tokenId);
+      const receipt = await tx.wait();
+      
+      // Vérifier l'événement Burned
+      const burnEvent = receipt?.logs.find(log => {
+        try {
+          const parsedLog = depositNFT.interface.parseLog({
+            topics: log.topics,
+            data: log.data,
+          });
+          return parsedLog?.name === "Burned";
+        } catch {
+          return false;
+        }
+      });
+      
+      expect(burnEvent).to.not.be.undefined;
+      
+      // Vérifier que le NFT n'existe plus
+      await expect(
+        depositNFT.ownerOf(tokenId)
+      ).to.be.reverted;
+    });
   });
 }); 
