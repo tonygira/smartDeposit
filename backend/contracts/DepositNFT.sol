@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/Base64.sol";
@@ -10,8 +11,8 @@ import "./SmartDeposit.sol";
 /// @title DepositNFT - NFT représentant une caution locative
 /// @author Tony Girardo
 /// @notice Ce contrat gère les NFTs représentant les cautions locatives
-/// @dev Implémentation minimale utilisant ERC721 standard
-contract DepositNFT is ERC721, Ownable {
+/// @dev Implémentation utilisant ERC721URIStorage qui inclut déjà ERC-4906
+contract DepositNFT is ERC721URIStorage, Ownable {
     using Strings for uint256;
 
     address private _smartDepositAddress;
@@ -81,23 +82,51 @@ contract DepositNFT is ERC721, Ownable {
         emit DepositNFTMinted(_depositId, newTokenId, _owner);
     }
 
+    /// @notice Notifie que les métadonnées d'un NFT ont changé suite à une modification de la caution
+    /// @dev Cette fonction doit être appelée lorsque le statut d'une caution change
+    /// @param _depositId ID de la caution dont les métadonnées ont changé
+    function updateTokenMetadata(uint256 _depositId) external initialized {
+        require(
+            msg.sender == _smartDepositAddress,
+            "Only SmartDeposit can update metadata"
+        );
+
+        uint256 tokenId = _depositIdToTokenId[_depositId];
+        require(tokenId != 0, "No NFT found for this deposit");
+
+        // Utilise l'événement MetadataUpdate hérité de ERC721URIStorage qui implémente ERC-4906
+        _setTokenURI(tokenId, tokenURI(tokenId));
+    }
+
     // Implémentation des restrictions Soul Bound Token (SBT)
     // Nous surchargeons les fonctions publiques qui sont virtual
 
-    function transferFrom(address,address,uint256) public virtual override {
+    function transferFrom(
+        address,
+        address,
+        uint256
+    ) public virtual override(ERC721, IERC721) {
         revert("SBT: transfer not allowed");
     }
 
     // Surcharge uniquement la version virtuelle de safeTransferFrom (celle avec data)
-    function safeTransferFrom(address,address,uint256,bytes memory) public virtual override {
+    function safeTransferFrom(
+        address,
+        address,
+        uint256,
+        bytes memory
+    ) public virtual override(ERC721, IERC721) {
         revert("SBT: transfer not allowed");
     }
 
-    function approve(address, uint256) public pure override {
+    function approve(address, uint256) public pure override(ERC721, IERC721) {
         revert("SBT: approve not allowed");
     }
 
-    function setApprovalForAll(address, bool) public pure override {
+    function setApprovalForAll(
+        address,
+        bool
+    ) public pure override(ERC721, IERC721) {
         revert("SBT: setApprovalForAll not allowed");
     }
 
@@ -105,6 +134,16 @@ contract DepositNFT is ERC721, Ownable {
 
     function burn(uint256 tokenId) external {
         require(ownerOf(tokenId) == msg.sender, "SBT: Only owner can burn");
+
+        // Récupérer l'ID du dépôt associé avant de brûler le token
+        uint256 depositId = _tokenIdToDepositId[tokenId];
+
+        // Nettoyer les mappings
+        if (depositId != 0) {
+            _depositIdToTokenId[depositId] = 0;
+            _tokenIdToDepositId[tokenId] = 0;
+        }
+
         emit Burned(msg.sender, tokenId);
         _burn(tokenId);
     }
@@ -143,12 +182,6 @@ contract DepositNFT is ERC721, Ownable {
     function getCurrentTokenCount() external view returns (uint256) {
         return _tokenIds;
     }
-
-    /// ************************************************************
-    /// TONY TODO :
-    /// To refresh token metadata on OpenSea, you can emit on-chain events as defined in ERC-4906:
-    /// event MetadataUpdate(uint256 _tokenId);
-    /// ************************************************************
 
     /// @notice Retourne l'URI des métadonnées du NFT
     /// @dev Génère des métadonnées JSON en base64
@@ -270,8 +303,9 @@ contract DepositNFT is ERC721, Ownable {
         }
 
         // Sélection de la couleur en fonction du statut
-        // PAID(1) => violet, REFUNDED(5) => vert, PARTIALLY_REFUNDED(4) => jaune, RETAINED(3) => rouge
+        // PAID(1) => violet, REFUNDED(5) => vert, PARTIALLY_REFUNDED(4) => jaune, RETAINED(3) => rouge, DISPUTED(2) => lightpink
         string memory backgroundColor;
+        string memory disputeText;
         if (_status == 5) {
             // REFUNDED
             backgroundColor = "#25a244"; // Vert
@@ -281,6 +315,10 @@ contract DepositNFT is ERC721, Ownable {
         } else if (_status == 3) {
             // RETAINED
             backgroundColor = "#e63946"; // Rouge
+        } else if (_status == 2) {
+            // DISPUTED
+            backgroundColor = "lightpink"; // Lightpink
+            disputeText = '<text x="250" y="340" font-family="Arial" font-size="120" font-weight="bold" text-anchor="middle" fill="red">LiTiGE</text>';
         } else {
             backgroundColor = "#7759F9"; // Violet (couleur par défaut pour PAID et autres statuts)
         }
@@ -302,6 +340,7 @@ contract DepositNFT is ERC721, Ownable {
                 '<text x="250" y="460" font-family="Arial" font-size="35" text-anchor="middle" fill="white">Montant : ',
                 amountInEth,
                 "</text>",
+                disputeText,
                 "</svg>"
             );
     }

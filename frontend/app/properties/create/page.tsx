@@ -171,7 +171,7 @@ export default function CreateProperty() {
               <CardFooter className="flex justify-end gap-2">
                 {transactionStatus === "success" && (
                   <>
-                    <Button onClick={() => router.push("/dashboard")} variant="default">
+                    <Button onClick={() => router.push("/dashboard")} variant="outline">
                       Retour au tableau de bord
                     </Button>
                     <Button

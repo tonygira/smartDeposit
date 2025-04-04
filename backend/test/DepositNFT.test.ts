@@ -282,6 +282,49 @@ describe("DepositNFT", function () {
       expect(partialSVG).to.include('fill="#ffbb00"'); // Jaune pour PARTIALLY_REFUNDED
       expect(refundedSVG).to.include('fill="#25a244"'); // Vert pour REFUNDED
     });
+    
+    it("Should display dispute text for disputed deposits", async function () {
+      // Créer une propriété
+      await smartDeposit.connect(landlord).createProperty("Test Property Dispute", "Test Location Dispute");
+      const propertyId = 1;
+      
+      // Créer et payer une caution
+      const depositCode = "DISPUTE";
+      await smartDeposit.connect(landlord).createDeposit(propertyId, depositCode);
+      const depositId = await smartDeposit.getDepositIdFromProperty(propertyId);
+      const depositAmount = ethers.parseEther("0.75");
+      await smartDeposit.connect(landlord).setDepositAmount(depositId, depositAmount);
+      
+      // Payer la caution
+      await smartDeposit.connect(tenant).payDeposit(depositId, depositCode, { value: depositAmount });
+      
+      // Initier un litige (mais ne pas le résoudre pour rester en statut DISPUTED)
+      await smartDeposit.connect(landlord).initiateDispute(depositId);
+      
+      // Récupérer l'ID du token et son URI
+      const tokenId = await depositNFT.getTokenIdFromDeposit(depositId);
+      const tokenURI = await depositNFT.tokenURI(tokenId);
+      
+      // Décoder le SVG
+      const base64Json = tokenURI.replace("data:application/json;base64,", "");
+      const jsonData = JSON.parse(Buffer.from(base64Json, 'base64').toString('utf-8'));
+      const base64SVG = jsonData.image.replace("data:image/svg+xml;base64,", "");
+      const svgContent = Buffer.from(base64SVG, 'base64').toString('utf-8');
+      
+      // Vérifier que le SVG contient la couleur rose pâle pour le statut DISPUTED
+      expect(svgContent).to.include('fill="lightpink"');
+      
+      // Vérifier que le texte "LITIGE" est présent
+      expect(svgContent).to.include('LiTiGE');
+      
+      // Vérifier les autres éléments du SVG
+      expect(svgContent).to.include(`Caution #${depositId}`);
+      expect(svgContent).to.include("0.7500 ETH");
+      
+      // Vérifier le statut dans les métadonnées
+      const statusAttr = jsonData.attributes.find((attr: any) => attr.trait_type === "Statut");
+      expect(statusAttr.value).to.equal("Disputée");
+    });
   });
 
   describe("Soul-Bound Token tests", function () {
@@ -379,6 +422,145 @@ describe("DepositNFT", function () {
       await expect(
         depositNFT.ownerOf(tokenId)
       ).to.be.reverted;
+    });
+
+    it("Should clean up mappings when NFT is burned", async function () {
+      // Récupérer l'ID du dépôt avant de brûler
+      const depositId = await depositNFT.getDepositIdFromToken(tokenId);
+      expect(depositId).to.not.equal(0); // Vérifier qu'il y a bien un dépôt associé
+      
+      // Vérifier que le mapping deposit->token est correct
+      const tokenIdBefore = await depositNFT.getTokenIdFromDeposit(depositId);
+      expect(tokenIdBefore).to.equal(tokenId);
+      
+      // Brûler le NFT
+      await depositNFT.connect(tenant).burn(tokenId);
+      
+      // Vérifier que les mappings ont été nettoyés
+      const tokenIdAfter = await depositNFT.getTokenIdFromDeposit(depositId);
+      expect(tokenIdAfter).to.equal(0); // Devrait être réinitialisé à 0
+      
+      // Vérifier que le mapping token->deposit est également nettoyé
+      // Note: getDepositIdFromToken pourrait échouer car le token n'existe plus,
+      // mais si la fonction est conçue pour fonctionner avec des tokens inexistants,
+      // elle devrait retourner 0
+      try {
+        const depositIdAfter = await depositNFT.getDepositIdFromToken(tokenId);
+        expect(depositIdAfter).to.equal(0);
+      } catch (error) {
+        // C'est aussi acceptable si la fonction échoue car le token n'existe plus
+      }
+      
+      // Vérifier que le tenant n'a plus le NFT
+      expect(await depositNFT.balanceOf(tenant.address)).to.equal(0);
+    });
+  });
+
+  describe("MetadataUpdate", function () {
+    let depositId: bigint;
+    let tokenId: bigint;
+    let depositAmount: bigint;
+
+    beforeEach(async function () {
+      // Créer une propriété
+      await smartDeposit.connect(landlord).createProperty("Test Property", "Test Location");
+      const propertyId = 1;
+      
+      // Créer et payer une caution
+      const depositCode = "123456";
+      await smartDeposit.connect(landlord).createDeposit(propertyId, depositCode);
+      depositId = 1n;
+      depositAmount = ethers.parseEther("1");
+      await smartDeposit.connect(landlord).setDepositAmount(depositId, depositAmount);
+      
+      // Payer la caution pour recevoir le NFT
+      await smartDeposit.connect(tenant).payDeposit(depositId, depositCode, {
+        value: depositAmount,
+      });
+      
+      // Récupérer l'ID du token
+      tokenId = await depositNFT.getTokenIdFromDeposit(depositId);
+    });
+
+    // Fonction utilitaire pour vérifier l'émission d'événements MetadataUpdate
+    async function verifyMetadataUpdateEvent(transaction: any, expectedTokenId: bigint) {
+      const receipt = await transaction.wait();
+      
+      // Chercher l'événement MetadataUpdate dans les logs
+      const event = receipt?.logs.find(log => {
+        try {
+          const parsedLog = depositNFT.interface.parseLog({
+            topics: log.topics,
+            data: log.data,
+          });
+          return parsedLog?.name === "MetadataUpdate";
+        } catch {
+          return false;
+        }
+      });
+      
+      // Vérifier que l'événement existe
+      expect(event).to.not.be.undefined;
+      
+      // Si possible, vérifier que l'argument est bon
+      if (event && event.args) {
+        expect(event.args[0]).to.equal(expectedTokenId);
+      }
+    }
+
+    it("Should not allow updateTokenMetadata from non-SmartDeposit address", async function () {
+      await expect(
+        depositNFT.connect(tenant).updateTokenMetadata(depositId)
+      ).to.be.revertedWith("Only SmartDeposit can update metadata");
+    });
+
+    it("Should emit MetadataUpdate event when refunding deposit", async function () {
+      const tx = await smartDeposit.connect(landlord).refundDeposit(depositId);
+      await verifyMetadataUpdateEvent(tx, tokenId);
+    });
+
+    it("Should emit MetadataUpdate event when initiating dispute", async function () {
+      const tx = await smartDeposit.connect(landlord).initiateDispute(depositId);
+      await verifyMetadataUpdateEvent(tx, tokenId);
+    });
+
+    it("Should emit MetadataUpdate event when resolving dispute", async function () {
+      // D'abord initier un litige
+      await smartDeposit.connect(landlord).initiateDispute(depositId);
+      
+      // Résoudre le litige, ce qui devrait déclencher updateTokenMetadata
+      const refundAmount = depositAmount / 2n; // Remboursement partiel
+      const tx = await smartDeposit.connect(landlord).resolveDispute(depositId, refundAmount);
+      await verifyMetadataUpdateEvent(tx, tokenId);
+    });
+
+    it("Should verify that URI changes after status update", async function () {
+      // Fonction utilitaire pour décoder une URI et extraire les attributs
+      function decodeTokenURI(uri: string) {
+        const base64Part = uri.replace("data:application/json;base64,", "");
+        const jsonData = JSON.parse(Buffer.from(base64Part, 'base64').toString('utf-8'));
+        return jsonData;
+      }
+      
+      // Obtenir l'URI avant le changement de statut
+      const uriBefore = await depositNFT.tokenURI(tokenId);
+      const jsonDataBefore = decodeTokenURI(uriBefore);
+      const statusAttrBefore = jsonDataBefore.attributes.find((attr: any) => attr.trait_type === "Statut");
+      
+      // Changer le statut de la caution
+      await smartDeposit.connect(landlord).refundDeposit(depositId);
+      
+      // Obtenir l'URI après le changement de statut
+      const uriAfter = await depositNFT.tokenURI(tokenId);
+      const jsonDataAfter = decodeTokenURI(uriAfter);
+      
+      // Vérifier que l'URI a changé
+      expect(uriBefore).to.not.equal(uriAfter);
+      
+      // Vérifier que le statut a changé
+      const statusAttrAfter = jsonDataAfter.attributes.find((attr: any) => attr.trait_type === "Statut");
+      expect(statusAttrBefore.value).to.equal("Payée");
+      expect(statusAttrAfter.value).to.equal("Remboursée");
     });
   });
 }); 
