@@ -32,7 +32,7 @@ export default function NFTDetails() {
   const { data: depositNFTAddress } = useReadContract({
     address: CONTRACT_ADDRESS as `0x${string}`,
     abi: SMART_DEPOSIT_ABI,
-    functionName: "depositNFT",
+    functionName: "getDepositNFTAddress",
   });
   
   // Une fois l'adresse obtenue, récupérer l'URI du token

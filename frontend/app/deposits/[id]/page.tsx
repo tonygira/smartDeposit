@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button"
 import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, getPropertyStatusText, PropertyStatus, getDepositStatusText, DepositStatus } from "@/lib/contract"
 import { useToast } from "@/hooks/use-toast"
-import { MapPin, DollarSign, Loader2, CheckCircle, AlertCircle, ArrowLeft, User } from "lucide-react"
+import { MapPin, DollarSign, Loader2, CheckCircle, AlertCircle, ArrowLeft, User, Wallet } from "lucide-react"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 
 export default function DepositDetails() {
@@ -354,8 +354,8 @@ export default function DepositDetails() {
                   </CardDescription>
                 </div>
                 <div>
-                  <p className="flex items-center text-sm font-medium mb-2 text-gray-700">
-                    <DollarSign className="h-4 w-4 mr-1" />
+                  <p className="flex items-center justify-end text-sm font-medium mb-2 text-gray-700">
+                    <Wallet className="h-4 w-4 mr-1" />
                     Caution associée
                   </p>
                   <div className="text-right">
@@ -377,27 +377,22 @@ export default function DepositDetails() {
                               <div className="flex flex-col items-end text-sm">
                                 <div className="flex items-center">
                                   <span>Remboursé: {depositDetails.finalAmount} ETH</span>
-                                  <DollarSign className="h-4 w-4 ml-1 text-gray-400" />
                                 </div>
                                 <div className="flex items-center">
                                   <span>Retenu: {depositDetails.retainedAmount} ETH</span>
-                                  <DollarSign className="h-4 w-4 ml-1 text-red-400" />
                                 </div>
                               </div>
                             ) : depositDetails.status === DepositStatus.RETAINED ? (
                               <div className="flex items-center justify-end text-sm">
                                 <span>Retenu: {depositDetails.amount} ETH</span>
-                                <DollarSign className="h-4 w-4 ml-1 text-red-400" />
                               </div>
                             ) : depositDetails.status === DepositStatus.REFUNDED ? (
                               <div className="flex items-center justify-end text-sm">
                                 <span>Remboursé: {depositDetails.amount} ETH</span>
-                                <DollarSign className="h-4 w-4 ml-1 text-green-400" />
                               </div>
                             ) : (
                               <div className="flex items-center justify-end text-sm">
                                 <span>Montant: {depositDetails.amount} ETH</span>
-                                <DollarSign className="h-4 w-4 ml-1 text-gray-400" />
                               </div>
                             )}
                           </>

@@ -9,7 +9,7 @@ import "./DepositNFT.sol";
 /// @notice This contract manages rental deposits between landlords and tenants
 /// @dev Inherits from OpenZeppelin's Ownable for basic access control
 contract SmartDeposit is Ownable {
-    DepositNFT public depositNFT;
+    DepositNFT private depositNFT;
 
     /// @notice Represents a rental property with its details and current status
     /// @dev Links a property to its owner and tracks its rental/deposit status
@@ -149,10 +149,47 @@ contract SmartDeposit is Ownable {
     event DepositPaid(
         uint256 indexed depositId,
         address indexed tenant,
+        address indexed landlord,
         uint256 amount
     );
 
+    /// @notice Emitted when a deposit is refunded
+    event DepositRefunded(
+        uint256 indexed depositId,
+        address indexed tenant,
+        address indexed landlord,
+        uint256 amount
+    );
+
+    /// @notice Emitted when a deposit is partially refunded
+    event DepositPartiallyRefunded(
+        uint256 indexed depositId,
+        address indexed tenant,
+        address indexed landlord,
+        uint256 amount
+    );
+
+    /// @notice Emitted when a deposit is retained
+    event DepositRetained(
+        uint256 indexed depositId,
+        address indexed tenant,
+        address indexed landlord,
+        uint256 amount
+    );
+
+    /// @notice Emitted when a deposit is disputed
+    event DepositDisputed(
+        uint256 indexed depositId,
+        address indexed tenant,
+        address indexed landlord,
+        uint256 amount
+    );
+
+    /// @notice Emitted when ETH are sent to the contract
+    event Received(address indexed sender, uint256 amount);
+
     /// @dev Initialize the contract with the deployer as owner
+    /// @param _depositNFT Address of the DepositNFT contract
     constructor(address _depositNFT) Ownable(msg.sender) {
         depositNFT = DepositNFT(_depositNFT);
     }
@@ -235,6 +272,12 @@ contract SmartDeposit is Ownable {
         require(
             property.currentDepositId == 0,
             "Cannot delete property with active deposit"
+        );
+
+        // Vérifier qu'il n'y a pas d'historique de cautions
+        require(
+            propertyDeposits[_propertyId].length == 0,
+            "Cannot delete property with deposit history"
         );
 
         // Remove property from landlord's portfolio. NOTE: this will never be a long loop because the landlord can only have a few properties
@@ -359,7 +402,12 @@ contract SmartDeposit is Ownable {
         // Mint NFT for the tenant
         depositNFT.mintDepositNFT(_depositId, msg.sender);
 
-        emit DepositPaid(_depositId, msg.sender, msg.value);
+        emit DepositPaid(
+            _depositId,
+            msg.sender,
+            properties[deposit.propertyId].landlord,
+            msg.value
+        );
         emit PropertyStatusChanged(deposit.propertyId, PropertyStatus.RENTED);
         emit DepositStatusChanged(_depositId, DepositStatus.PAID);
 
@@ -388,11 +436,20 @@ contract SmartDeposit is Ownable {
         property.status = PropertyStatus.NOT_RENTED;
         property.currentDepositId = 0; // Libère le bien pour une nouvelle caution
 
-        // Transfert de l'argent au locataire
-        payable(deposit.tenant).transfer(deposit.amount);
+        // Transfert de l'argent au locataire en utilisant call() au lieu de transfer()
+        (bool success, ) = payable(deposit.tenant).call{value: deposit.amount}(
+            ""
+        );
+        require(success, "Refund transfer failed");
 
         emit DepositStatusChanged(_depositId, deposit.status);
         emit PropertyStatusChanged(_depositId, property.status);
+        emit DepositRefunded(
+            _depositId,
+            deposit.tenant,
+            properties[deposit.propertyId].landlord,
+            deposit.amount
+        );
 
         // Mettre à jour les métadonnées du NFT
         uint256 tokenId = depositNFT.getTokenIdFromDeposit(_depositId);
@@ -417,9 +474,14 @@ contract SmartDeposit is Ownable {
         deposit.status = DepositStatus.DISPUTED;
         properties[deposit.propertyId].status = PropertyStatus.DISPUTED;
 
-        emit DisputeRaised(_depositId, msg.sender);
         emit DepositStatusChanged(_depositId, DepositStatus.DISPUTED);
         emit PropertyStatusChanged(deposit.propertyId, PropertyStatus.DISPUTED);
+        emit DepositDisputed(
+            _depositId,
+            deposit.tenant,
+            properties[deposit.propertyId].landlord,
+            deposit.amount
+        );
 
         // Mettre à jour les métadonnées du NFT
         uint256 tokenId = depositNFT.getTokenIdFromDeposit(_depositId);
@@ -452,17 +514,45 @@ contract SmartDeposit is Ownable {
 
         if (_refundedAmount == deposit.amount) {
             deposit.status = DepositStatus.REFUNDED;
-            payable(deposit.tenant).transfer(_refundedAmount);
+            (bool success, ) = payable(deposit.tenant).call{
+                value: _refundedAmount
+            }("");
+            require(success, "Refund transfer to tenant failed");
+            emit DepositRefunded(
+                _depositId,
+                deposit.tenant,
+                properties[deposit.propertyId].landlord,
+                _refundedAmount
+            );
         } else if (_refundedAmount == 0) {
             deposit.status = DepositStatus.RETAINED;
-            payable(properties[deposit.propertyId].landlord).transfer(
+            (bool success, ) = payable(properties[deposit.propertyId].landlord)
+                .call{value: deposit.amount}("");
+            require(success, "Transfer to landlord failed");
+            emit DepositRetained(
+                _depositId,
+                deposit.tenant,
+                properties[deposit.propertyId].landlord,
                 deposit.amount
             );
         } else {
             deposit.status = DepositStatus.PARTIALLY_REFUNDED;
-            payable(deposit.tenant).transfer(_refundedAmount);
-            payable(properties[deposit.propertyId].landlord).transfer(
-                deposit.amount - _refundedAmount
+            // Transférer au locataire
+            (bool successTenant, ) = payable(deposit.tenant).call{
+                value: _refundedAmount
+            }("");
+            require(successTenant, "Refund transfer to tenant failed");
+
+            // Transférer au propriétaire
+            (bool successLandlord, ) = payable(
+                properties[deposit.propertyId].landlord
+            ).call{value: deposit.amount - _refundedAmount}("");
+            require(successLandlord, "Transfer to landlord failed");
+            emit DepositPartiallyRefunded(
+                _depositId,
+                deposit.tenant,
+                properties[deposit.propertyId].landlord,
+                _refundedAmount
             );
         }
 
@@ -547,7 +637,6 @@ contract SmartDeposit is Ownable {
 
     /// @notice Gets current active deposit ID for a property
     /// @dev the onlyLandlord modifier cannot be used here because the future tenant will call this function before paying the deposit
-    /// @dev TODO: add a modifier to allow the lanlord and the concerned tenant to call this function
     /// @param _propertyId ID of the property to query
     /// @return The ID of the current deposit (0 if none)
     function getDepositIdFromProperty(
@@ -572,6 +661,7 @@ contract SmartDeposit is Ownable {
     }
 
     /// @notice Gets details of a specific property
+    /// @dev this information will be encrypted with the LIT protocol
     /// @param _propertyId ID of the property to query
     /// @return Property struct containing all property details
     function getProperty(
@@ -581,6 +671,7 @@ contract SmartDeposit is Ownable {
     }
 
     /// @notice Gets details of a specific deposit
+    /// @dev this information will be encrypted with the LIT protocol
     /// @param _depositId ID of the deposit to query
     /// @return Deposit struct containing all deposit details
     function getDeposit(
@@ -590,51 +681,23 @@ contract SmartDeposit is Ownable {
     }
 
     /// @notice Gets all files associated with a deposit
-    /// @dev Returns files for the specified deposit, only accessible by landlord or tenant
+    /// @dev The returned files will be encrypted with the LIT protocol
+    /// @dev Returns files for the specified deposit
     /// @param _depositId ID of the deposit to query
     /// @return Array of FileReference structs containing file details
     function getDepositFiles(
         uint256 _depositId
     ) external view depositExists(_depositId) returns (FileReference[] memory) {
-        /*Deposit storage deposit = deposits[_depositId];
-        require(
-            msg.sender == properties[deposit.propertyId].landlord ||
-                msg.sender == deposit.tenant,
-            "Only landlord or tenant can access deposit files"
-        );*/
         return depositFiles[_depositId];
     }
 
-    // Getters spécifiques pour DepositNFT
-    /// @notice Obtient les informations de base d'une caution pour le NFT
-    /// @param _depositId ID de la caution
-    /// @return propertyId ID de la propriété
-    /// @return tenant Adresse du locataire
-    /// @return amount Montant de la caution
-    /// @return status Statut numérique de la caution
-    function getDepositInfoForNFT(
-        uint256 _depositId
-    )
-        external
-        view
-        depositExists(_depositId)
-        returns (
-            uint256 propertyId,
-            address tenant,
-            uint256 amount,
-            uint256 status
-        )
-    {
-        Deposit storage deposit = deposits[_depositId];
-        return (
-            deposit.propertyId,
-            deposit.tenant,
-            deposit.amount,
-            uint256(deposit.status)
-        );
+    /// @notice Obtient l'adresse du contrat DepositNFT
+    /// @return L'adresse du contrat DepositNFT
+    function getDepositNFTAddress() external view returns (address) {
+        return address(depositNFT);
     }
 
-    /// @notice Obtient les informations étendues d'une caution pour le NFT avec dates et landlord
+    /// @notice Obtient les informations étendues d'une caution pour le NFT
     /// @param _depositId ID de la caution
     /// @return propertyId ID de la propriété
     /// @return tenant Adresse du locataire
@@ -674,5 +737,15 @@ contract SmartDeposit is Ownable {
             deposit.finalAmount,
             property.landlord
         );
+    }
+
+    /// @notice Receive function to trace accidental transfers
+    receive() external payable {
+        // log des envois accidentels
+        emit Received(msg.sender, msg.value);
+    }
+
+    fallback() external {
+        revert("Function does not exist");
     }
 }

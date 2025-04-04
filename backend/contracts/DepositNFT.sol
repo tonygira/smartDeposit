@@ -15,17 +15,21 @@ import "./SmartDeposit.sol";
 contract DepositNFT is ERC721URIStorage, Ownable {
     using Strings for uint256;
 
-    address private _smartDepositAddress;
-    uint256 private _tokenIds;
-    mapping(uint256 => uint256) private _depositIdToTokenId;
-    mapping(uint256 => uint256) private _tokenIdToDepositId;
-    bool private _initialized;
+    address payable private _smartDepositAddress; /// @notice Adresse du contrat SmartDeposit
+    uint256 private _tokenIds; /// @notice Compteur pour générer des ID de token uniques
+    mapping(uint256 => uint256) private _depositIdToTokenId; /// @notice Mapping de l'ID de caution vers l'ID du token NFT
+    mapping(uint256 => uint256) private _tokenIdToDepositId; /// @notice Mapping de l'ID du token NFT vers l'ID de caution
+    bool private _initialized; /// @notice État d'initialisation du contrat
 
+    /// @notice Emitted when a NFT is minted
     event DepositNFTMinted(
         uint256 indexed depositId,
         uint256 indexed tokenId,
         address indexed owner
     );
+
+    /// @notice Emitted when a NFT is burned
+    event Burned(address indexed owner, uint256 indexed tokenId);
 
     /// @notice Constructeur du contrat
     /// @dev Initialise le contrat sans lien avec SmartDeposit
@@ -42,7 +46,7 @@ contract DepositNFT is ERC721URIStorage, Ownable {
             smartDepositAddress != address(0),
             "Invalid SmartDeposit address"
         );
-        _smartDepositAddress = smartDepositAddress;
+        _smartDepositAddress = payable(smartDepositAddress);
         _initialized = true;
     }
 
@@ -101,6 +105,11 @@ contract DepositNFT is ERC721URIStorage, Ownable {
     // Implémentation des restrictions Soul Bound Token (SBT)
     // Nous surchargeons les fonctions publiques qui sont virtual
 
+    /// @notice Empêche le transfert de NFT, implémentant le concept de Soul Bound Token
+    /// @dev Surcharge la méthode ERC721 pour bloquer tous les transferts
+    /// @param - adresse d'origine (ignorée)
+    /// @param - adresse de destination (ignorée)
+    /// @param - ID du token (ignoré)
     function transferFrom(
         address,
         address,
@@ -109,7 +118,12 @@ contract DepositNFT is ERC721URIStorage, Ownable {
         revert("SBT: transfer not allowed");
     }
 
-    // Surcharge uniquement la version virtuelle de safeTransferFrom (celle avec data)
+    /// @notice Empêche le transfert sécurisé de NFT, implémentant le concept de Soul Bound Token
+    /// @dev Surcharge la version avec data de safeTransferFrom pour bloquer tous les transferts
+    /// @param - adresse d'origine (ignorée)
+    /// @param - adresse de destination (ignorée)
+    /// @param - ID du token (ignoré)
+    /// @param - données additionnelles (ignorées)
     function safeTransferFrom(
         address,
         address,
@@ -119,10 +133,18 @@ contract DepositNFT is ERC721URIStorage, Ownable {
         revert("SBT: transfer not allowed");
     }
 
+    /// @notice Empêche l'approbation de transfert pour un NFT
+    /// @dev Surcharge la méthode approve pour bloquer toute autorisation
+    /// @param - adresse approuvée (ignorée)
+    /// @param - ID du token (ignoré)
     function approve(address, uint256) public pure override(ERC721, IERC721) {
         revert("SBT: approve not allowed");
     }
 
+    /// @notice Empêche l'approbation de transfert pour tous les NFTs
+    /// @dev Surcharge la méthode setApprovalForAll pour bloquer toute autorisation
+    /// @param - adresse de l'opérateur (ignorée)
+    /// @param - statut d'approbation (ignoré)
     function setApprovalForAll(
         address,
         bool
@@ -130,8 +152,9 @@ contract DepositNFT is ERC721URIStorage, Ownable {
         revert("SBT: setApprovalForAll not allowed");
     }
 
-    event Burned(address indexed owner, uint256 indexed tokenId);
-
+    /// @notice Permet au propriétaire d'un NFT de le brûler
+    /// @dev Nettoie les mappings associés et émet l'événement Burned avant d'appeler _burn
+    /// @param tokenId ID du token NFT à brûler
     function burn(uint256 tokenId) external {
         require(ownerOf(tokenId) == msg.sender, "SBT: Only owner can burn");
 
@@ -164,23 +187,6 @@ contract DepositNFT is ERC721URIStorage, Ownable {
         uint256 _tokenId
     ) external view initialized returns (uint256) {
         return _tokenIdToDepositId[_tokenId];
-    }
-
-    /// @notice Récupère l'adresse du contrat SmartDeposit
-    /// @return L'adresse du contrat SmartDeposit
-    function getSmartDepositAddress()
-        external
-        view
-        initialized
-        returns (address)
-    {
-        return _smartDepositAddress;
-    }
-
-    /// @notice Retourne le nombre actuel de tokens
-    /// @return Le dernier ID de token généré
-    function getCurrentTokenCount() external view returns (uint256) {
-        return _tokenIds;
     }
 
     /// @notice Retourne l'URI des métadonnées du NFT
