@@ -130,16 +130,6 @@ export default function Deposits() {
     })),
   })
 
-  // Fetch property IDs for each deposit
-  const { data: propertyIdsData } = useReadContracts({
-    contracts: ((depositIds as bigint[]) || []).map((id) => ({
-      address: CONTRACT_ADDRESS as `0x${string}`,
-      abi: SMART_DEPOSIT_ABI as any,
-      functionName: "getPropertyIdFromDeposit",
-      args: [id],
-    })),
-  })
-
   // Process deposit data
   useEffect(() => {
     if (depositsData) {
@@ -179,17 +169,13 @@ export default function Deposits() {
     }
   }, [depositsData])
 
-  // Get unique property IDs from property IDs data
+  // Get unique property IDs directly from deposits
   useEffect(() => {
-    if (propertyIdsData) {
-      const uniquePropertyIds = propertyIdsData
-        .filter(result => result.status === "success" && result.result)
-        .map(result => Number(result.result))
-        .filter((value, index, self) => self.indexOf(value) === index); // Unique values only
-      
+    if (deposits && deposits.length > 0) {
+      const uniquePropertyIds = Array.from(new Set(deposits.map(deposit => deposit.propertyId)));
       setPropertyIds(uniquePropertyIds);
     }
-  }, [propertyIdsData]);
+  }, [deposits]);
 
   // Fetch property details
   const { data: propertiesData } = useReadContracts({

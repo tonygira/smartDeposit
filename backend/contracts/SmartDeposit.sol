@@ -362,6 +362,9 @@ contract SmartDeposit is Ownable {
         emit DepositPaid(_depositId, msg.sender, msg.value);
         emit PropertyStatusChanged(deposit.propertyId, PropertyStatus.RENTED);
         emit DepositStatusChanged(_depositId, DepositStatus.PAID);
+
+        // Comme le NFT vient d'être créé, pas besoin de vérifier si tokenId > 0
+        depositNFT.updateTokenMetadata(_depositId);
     }
 
     /// @notice Refunds a paid deposit
@@ -390,6 +393,12 @@ contract SmartDeposit is Ownable {
 
         emit DepositStatusChanged(_depositId, deposit.status);
         emit PropertyStatusChanged(_depositId, property.status);
+
+        // Mettre à jour les métadonnées du NFT
+        uint256 tokenId = depositNFT.getTokenIdFromDeposit(_depositId);
+        if (tokenId > 0) {
+            depositNFT.updateTokenMetadata(_depositId);
+        }
     }
 
     /// @notice Initiates a dispute for a paid deposit
@@ -411,6 +420,12 @@ contract SmartDeposit is Ownable {
         emit DisputeRaised(_depositId, msg.sender);
         emit DepositStatusChanged(_depositId, DepositStatus.DISPUTED);
         emit PropertyStatusChanged(deposit.propertyId, PropertyStatus.DISPUTED);
+
+        // Mettre à jour les métadonnées du NFT
+        uint256 tokenId = depositNFT.getTokenIdFromDeposit(_depositId);
+        if (tokenId > 0) {
+            depositNFT.updateTokenMetadata(_depositId);
+        }
     }
 
     /// @notice Resolves a dispute and handles deposit distribution
@@ -459,6 +474,12 @@ contract SmartDeposit is Ownable {
             deposit.propertyId,
             PropertyStatus.NOT_RENTED
         );
+
+        // Mettre à jour les métadonnées du NFT
+        uint256 tokenId = depositNFT.getTokenIdFromDeposit(_depositId);
+        if (tokenId > 0) {
+            depositNFT.updateTokenMetadata(_depositId);
+        }
     }
 
     /// @notice Adds a file reference to a deposit

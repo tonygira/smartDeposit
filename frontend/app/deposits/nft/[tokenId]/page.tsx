@@ -5,22 +5,26 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI } from '@/lib/contract';
+import { CONTRACT_ADDRESS, SMART_DEPOSIT_ABI, DepositStatus } from '@/lib/contract';
 import { Header } from '@/components/header';
-import { ArrowLeft, ImageIcon, Copy, CheckCircle } from 'lucide-react';
+import { ArrowLeft, ImageIcon, Copy, CheckCircle, Flame } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useReadContract } from 'wagmi';
+import { useReadContract, useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
 
 export default function NFTDetails() {
   const params = useParams();
   const router = useRouter();
+  const { address } = useAccount();
   const [metadata, setMetadata] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [copiedTokenId, setCopiedTokenId] = useState(false);
+  const [showBurnDialog, setShowBurnDialog] = useState(false);
+  const [canBurn, setCanBurn] = useState(false);
   
   const tokenId = params.tokenId as string;
   
@@ -44,6 +48,28 @@ export default function NFTDetails() {
     functionName: "tokenURI",
     args: [BigInt(tokenId)],
     enabled: Boolean(depositNFTAddress)
+  });
+  
+  // Récupérer le propriétaire du NFT
+  const { data: ownerAddress, isLoading: isOwnerLoading } = useReadContract({
+    address: depositNFTAddress as `0x${string}`,
+    abi: [{
+      name: "ownerOf",
+      type: "function",
+      stateMutability: "view",
+      inputs: [{ name: "tokenId", type: "uint256" }],
+      outputs: [{ name: "", type: "address" }]
+    }],
+    functionName: "ownerOf",
+    args: [BigInt(tokenId)],
+    enabled: Boolean(depositNFTAddress)
+  });
+  
+  // Pour brûler le NFT
+  const { data: burnHash, isPending: isBurnPending, writeContract: writeBurnContract } = useWriteContract();
+  
+  const { isLoading: isBurnConfirming, isSuccess: isBurnConfirmed } = useWaitForTransactionReceipt({
+    hash: burnHash,
   });
   
   // Décoder l'URI du token pour obtenir les métadonnées
@@ -80,8 +106,53 @@ export default function NFTDetails() {
     }
   }, [tokenURI, isTokenURILoading]);
   
+  // Vérifier si l'utilisateur peut brûler le NFT
+  useEffect(() => {
+    if (metadata && ownerAddress) {
+      // Vérifier si l'utilisateur connecté est le propriétaire du NFT
+      const isOwner = address && ownerAddress && (ownerAddress.toLowerCase() === address.toLowerCase());
+      
+      // Rechercher l'attribut de statut dans les métadonnées
+      const statusAttr = metadata.attributes?.find((attr: any) => attr.trait_type === "Statut");
+      const depositStatus = statusAttr?.value;
+      
+      // L'utilisateur peut brûler s'il est le propriétaire et si le statut de la caution est Remboursée, Partiellement remboursée ou Conservée
+      setCanBurn(isOwner && (
+        depositStatus === "Remboursée" || 
+        depositStatus === "Partiellement remboursée" || 
+        depositStatus === "Conservée"
+      ));
+    }
+  }, [metadata, ownerAddress, address]);
+  
+  // Redirection après une action de brûlage réussie
+  useEffect(() => {
+    if (isBurnConfirmed) {
+      router.push('/deposits');
+    }
+  }, [isBurnConfirmed, router]);
+  
   const handleGoBack = () => {
     router.back();
+  };
+  
+  const handleBurnNFT = () => {
+    if (!depositNFTAddress || !tokenId) return;
+    
+    writeBurnContract({
+      address: depositNFTAddress as `0x${string}`,
+      abi: [{
+        name: "burn",
+        type: "function",
+        stateMutability: "nonpayable",
+        inputs: [{ name: "tokenId", type: "uint256" }],
+        outputs: []
+      }],
+      functionName: "burn",
+      args: [BigInt(tokenId)],
+    });
+    
+    setShowBurnDialog(false);
   };
   
   // Fonctions pour copier dans le presse-papier
@@ -139,14 +210,49 @@ export default function NFTDetails() {
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="flex-1 container py-12">
-        <Button 
-          variant="ghost" 
-          onClick={handleGoBack}
-          className="mb-6 flex items-center"
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Retour
-        </Button>
+        <div className="flex justify-between items-center mb-6">
+          <Button 
+            variant="ghost" 
+            onClick={handleGoBack}
+            className="flex items-center"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Retour
+          </Button>
+          
+          {canBurn && (
+            <Dialog open={showBurnDialog} onOpenChange={setShowBurnDialog}>
+              <DialogTrigger asChild>
+                <Button 
+                  variant="destructive" 
+                  className="flex items-center"
+                  disabled={isBurnPending || isBurnConfirming}
+                >
+                  <Flame className="mr-2 h-4 w-4" />
+                  Brûler
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Confirmer la destruction du NFT</DialogTitle>
+                  <DialogDescription>
+                    Êtes-vous sûr de vouloir brûler ce NFT ? Cette action est irréversible et supprimera définitivement ce NFT de votre portefeuille.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter className="mt-4">
+                  <Button variant="outline" onClick={() => setShowBurnDialog(false)}>Annuler</Button>
+                  <Button 
+                    variant="destructive" 
+                    onClick={handleBurnNFT}
+                    disabled={isBurnPending || isBurnConfirming}
+                  >
+                    {isBurnPending || isBurnConfirming ? 'En cours...' : 'Confirmer'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
         
         {loading ? (
           <div className="flex justify-center items-center h-40">

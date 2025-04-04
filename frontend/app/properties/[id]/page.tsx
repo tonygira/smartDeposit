@@ -1785,56 +1785,6 @@ export default function PropertyDetails() {
           </Card>
         )}
 
-        {/* Section des fichiers uploadés - visible par tous */}
-        <Card className="mt-8">
-          <CardHeader>
-            <CardTitle>Documents associés</CardTitle>
-            <CardDescription>Liste des documents uploadés pour ce bien</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {files.length === 0 ? (
-              <p className="text-gray-500">Aucun document n'a encore été uploadé.</p>
-            ) : (
-              <div className="grid gap-4">
-                {files.map((file, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
-                  >
-                    <div className="flex items-center space-x-4">
-                      <div className="p-2 bg-gray-100 rounded-full">
-                        <Upload className="h-5 w-5 text-gray-600" />
-                      </div>
-                      <div>
-                        <p className="font-medium">{getFileTypeText(Number(file.fileType))}</p>
-                        <p className="text-sm text-gray-500">
-                          {file.fileName}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          Uploadé le {file.uploadTimestamp ? new Date(Number(file.uploadTimestamp) * 1000).toLocaleDateString('fr-FR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          }) : 'Date inconnue'}
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDownloadFile(file.cid, file.fileName)}
-                    >
-                      Télécharger
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
         {/* Formulaire de dépôt d'état des lieux de sortie */}
         {showExitInventoryForm && (
           <Card className="mt-8">
@@ -1915,6 +1865,56 @@ export default function PropertyDetails() {
             </CardFooter>
           </Card>
         )}
+
+        {/* Section des fichiers uploadés - visible par tous */}
+        <Card className="mt-8">
+          <CardHeader>
+            <CardTitle>Documents associés</CardTitle>
+            <CardDescription>Liste des documents uploadés pour ce bien</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {files.length === 0 ? (
+              <p className="text-gray-500">Aucun document n'a encore été uploadé.</p>
+            ) : (
+              <div className="grid gap-4">
+                {files.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className="p-2 bg-gray-100 rounded-full">
+                        <Upload className="h-5 w-5 text-gray-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{getFileTypeText(Number(file.fileType))}</p>
+                        <p className="text-sm text-gray-500">
+                          {file.fileName}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          Uploadé le {file.uploadTimestamp ? new Date(Number(file.uploadTimestamp) * 1000).toLocaleDateString('fr-FR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          }) : 'Date inconnue'}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDownloadFile(file.cid, file.fileName)}
+                    >
+                      Télécharger
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </main>
     </div>
   )
