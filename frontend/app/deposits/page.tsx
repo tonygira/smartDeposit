@@ -248,7 +248,7 @@ export default function Deposits() {
   const { data: depositNFTAddressData } = useReadContract({
     address: CONTRACT_ADDRESS as `0x${string}`,
     abi: SMART_DEPOSIT_ABI,
-    functionName: "depositNFT",
+    functionName: "getDepositNFTAddress",
   });
 
   // Effet pour mettre à jour l'adresse du contrat NFT
