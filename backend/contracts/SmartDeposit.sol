@@ -388,8 +388,11 @@ contract SmartDeposit is Ownable {
         property.status = PropertyStatus.NOT_RENTED;
         property.currentDepositId = 0; // Libère le bien pour une nouvelle caution
 
-        // Transfert de l'argent au locataire
-        payable(deposit.tenant).transfer(deposit.amount);
+        // Transfert de l'argent au locataire en utilisant call() au lieu de transfer()
+        (bool success, ) = payable(deposit.tenant).call{value: deposit.amount}(
+            ""
+        );
+        require(success, "Refund transfer failed");
 
         emit DepositStatusChanged(_depositId, deposit.status);
         emit PropertyStatusChanged(_depositId, property.status);
@@ -452,18 +455,28 @@ contract SmartDeposit is Ownable {
 
         if (_refundedAmount == deposit.amount) {
             deposit.status = DepositStatus.REFUNDED;
-            payable(deposit.tenant).transfer(_refundedAmount);
+            (bool success, ) = payable(deposit.tenant).call{
+                value: _refundedAmount
+            }("");
+            require(success, "Refund transfer to tenant failed");
         } else if (_refundedAmount == 0) {
             deposit.status = DepositStatus.RETAINED;
-            payable(properties[deposit.propertyId].landlord).transfer(
-                deposit.amount
-            );
+            (bool success, ) = payable(properties[deposit.propertyId].landlord)
+                .call{value: deposit.amount}("");
+            require(success, "Transfer to landlord failed");
         } else {
             deposit.status = DepositStatus.PARTIALLY_REFUNDED;
-            payable(deposit.tenant).transfer(_refundedAmount);
-            payable(properties[deposit.propertyId].landlord).transfer(
-                deposit.amount - _refundedAmount
-            );
+            // Transférer au locataire
+            (bool successTenant, ) = payable(deposit.tenant).call{
+                value: _refundedAmount
+            }("");
+            require(successTenant, "Refund transfer to tenant failed");
+
+            // Transférer au propriétaire
+            (bool successLandlord, ) = payable(
+                properties[deposit.propertyId].landlord
+            ).call{value: deposit.amount - _refundedAmount}("");
+            require(successLandlord, "Transfer to landlord failed");
         }
 
         properties[deposit.propertyId].status = PropertyStatus.NOT_RENTED;

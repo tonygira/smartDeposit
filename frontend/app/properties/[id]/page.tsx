@@ -1469,7 +1469,7 @@ export default function PropertyDetails() {
                     </CardDescription>
                   </div>
                   <div>
-                    <p className="flex items-center text-sm font-medium mb-2 text-gray-700">
+                    <p className="flex items-center justify-end text-sm font-medium mb-2 text-gray-700">
                       <Wallet className="h-4 w-4 mr-1" />
                       Caution associée
                     </p>
@@ -1492,27 +1492,22 @@ export default function PropertyDetails() {
                                 <div className="flex flex-col items-end text-sm">
                                   <div className="flex items-center">
                                     <span>Remboursé: {depositDetails.finalAmount} ETH</span>
-                                    <DollarSign className="h-4 w-4 ml-1 text-gray-400" />
                                   </div>
                                   <div className="flex items-center">
                                     <span>Retenu: {depositDetails.retainedAmount} ETH</span>
-                                    <DollarSign className="h-4 w-4 ml-1 text-red-400" />
                                   </div>
                                 </div>
                               ) : depositDetails.status === DepositStatus.RETAINED ? (
                                 <div className="flex items-center justify-end text-sm">
                                   <span>Retenu: {depositDetails.amount} ETH</span>
-                                  <DollarSign className="h-4 w-4 ml-1 text-red-400" />
                                 </div>
                               ) : depositDetails.status === DepositStatus.REFUNDED ? (
                                 <div className="flex items-center justify-end text-sm">
                                   <span>Remboursé: {depositDetails.amount} ETH</span>
-                                  <DollarSign className="h-4 w-4 ml-1 text-green-400" />
                                 </div>
                               ) : (
                                 <div className="flex items-center justify-end text-sm">
                                   <span>Montant: {depositDetails.amount} ETH</span>
-                                  <DollarSign className="h-4 w-4 ml-1 text-gray-400" />
                                 </div>
                               )}
                             </>
@@ -1521,7 +1516,6 @@ export default function PropertyDetails() {
                       ) : (
                         <div className="flex items-center justify-end">
                           <span className="text-gray-500">Aucune</span>
-                          <Ban className="h-4 w-4 ml-1 text-gray-400" />
                         </div>
                       )}
                     </div>
