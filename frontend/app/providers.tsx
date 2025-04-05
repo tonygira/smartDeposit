@@ -7,8 +7,8 @@ import {
   RainbowKitProvider,
 } from '@rainbow-me/rainbowkit'
 import { WagmiProvider } from 'wagmi'
-import { hardhat } from 'wagmi/chains'
-// import { sepolia } from 'wagmi/chains'
+// import { hardhat } from 'wagmi/chains'
+import { sepolia } from 'wagmi/chains'
 import { http } from 'viem'
 import {
   QueryClientProvider,
@@ -18,11 +18,11 @@ import {
 const config = getDefaultConfig({
   appName: 'Smart Deposit',
   projectId: process.env.NEXT_PUBLIC_RAINBOW_PROJECT_ID || 'PROJECT_ID_NOT_SET',
-  chains: [hardhat],
-  // chains: [sepolia],
+  // chains: [hardhat],
+  chains: [sepolia],
   transports: {
-   [hardhat.id]: http(),
-    // [sepolia.id]: http(process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL),
+  //  [hardhat.id]: http(),
+    [sepolia.id]: http(process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL),
   }
 })
 
