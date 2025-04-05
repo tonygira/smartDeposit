@@ -153,6 +153,32 @@ describe('SmartDeposit', function () {
         expect(properties[0]).to.equal(id1)
         expect(properties[1]).to.equal(id2)
       })
+
+      it('should delete a property correctly', async function () {
+        const { smartDeposit, landlord } = await loadFixture(deploySmartDepositFixture)
+
+        const { propertyId } = await createTestProperty(
+          smartDeposit,
+          landlord,
+          "Property To Delete"
+        )
+
+        // Vérifier que la propriété existe avant suppression
+        const propertiesBefore = await smartDeposit.getLandlordProperties(landlord.address)
+        expect(propertiesBefore).to.include(propertyId)
+
+        // Supprimer la propriété
+        await smartDeposit.connect(landlord).deleteProperty(propertyId)
+
+        // Vérifier que la propriété a été supprimée
+        const propertiesAfter = await smartDeposit.getLandlordProperties(landlord.address)
+        expect(propertiesAfter).to.not.include(propertyId)
+
+        // Vérifier que la tentative d'accès à la propriété échoue
+        await expect(
+          smartDeposit.getProperty(propertyId)
+        ).to.be.revertedWith("Property does not exist")
+      })
     })
 
     describe('Modifier Checks', function () {
@@ -163,10 +189,133 @@ describe('SmartDeposit', function () {
         ).to.be.revertedWith("Property does not exist")
       })
     })
+
+    describe('Modifier and Requirement Checks', function () {
+      it('should fail when deleting property with active deposit', async function () {
+        const { smartDeposit, landlord } = await loadFixture(deploySmartDepositFixture)
+        
+        // Créer une propriété et un dépôt actif
+        const { depositId, propertyId } = await setupDeposit(smartDeposit, landlord)
+        
+        // La tentative de suppression devrait échouer
+        await expect(
+          smartDeposit.connect(landlord).deleteProperty(propertyId)
+        ).to.be.revertedWith("Cannot delete property with active deposit")
+      })
+
+      it('should fail when deleting property with deposit history', async function () {
+        const { smartDeposit, landlord, tenant } = await loadFixture(deploySmartDepositFixture)
+        
+        // Créer une propriété et un dépôt
+        const { depositId, propertyId, depositAmount } = await setupDeposit(smartDeposit, landlord)
+        
+        // Payer et rembourser le dépôt pour créer un historique
+        await smartDeposit.connect(tenant).payDeposit(depositId, "TEST123", {
+          value: depositAmount
+        })
+        
+        await smartDeposit.connect(landlord).refundDeposit(depositId)
+        
+        // La tentative de suppression devrait échouer car il y a un historique
+        await expect(
+          smartDeposit.connect(landlord).deleteProperty(propertyId)
+        ).to.be.revertedWith("Cannot delete property with deposit history")
+      })
+
+      it('should fail when non-landlord tries to delete property', async function () {
+        const { smartDeposit, landlord, tenant } = await loadFixture(deploySmartDepositFixture)
+        
+        const { propertyId } = await createTestProperty(
+          smartDeposit,
+          landlord,
+          "Property To Delete"
+        )
+        
+        // La tentative de suppression par un non-propriétaire devrait échouer
+        await expect(
+          smartDeposit.connect(tenant).deleteProperty(propertyId)
+        ).to.be.revertedWith("Not the landlord")
+      })
+
+      it('should fail when deleting non-existent property', async function () {
+        const { smartDeposit, landlord } = await loadFixture(deploySmartDepositFixture)
+        
+        // Tentative de suppression d'une propriété qui n'existe pas
+        const nonExistentPropertyId = 999n
+        
+        await expect(
+          smartDeposit.connect(landlord).deleteProperty(nonExistentPropertyId)
+        ).to.be.revertedWith("Property does not exist")
+      })
+
+      it('should handle properly deletion even if property is not in landlord array', async function () {
+        // Cette situation est difficile à tester directement car cela nécessite une incohérence 
+        // dans l'état du contrat (propriété existe mais pas dans le tableau du propriétaire)
+        // Nous allons vérifier que la suppression d'une propriété qui existe réussit toujours
+        
+        const { smartDeposit, landlord } = await loadFixture(deploySmartDepositFixture)
+        
+        // Créer deux propriétés
+        const { propertyId: propertyId1 } = await createTestProperty(
+          smartDeposit,
+          landlord,
+          "Property 1"
+        )
+        const { propertyId: propertyId2 } = await createTestProperty(
+          smartDeposit,
+          landlord,
+          "Property 2"
+        )
+        
+        // Vérifier que les deux propriétés existent
+        const propertiesBefore = await smartDeposit.getLandlordProperties(landlord.address)
+        expect(propertiesBefore).to.include(propertyId1)
+        expect(propertiesBefore).to.include(propertyId2)
+        
+        // Supprimer la première propriété
+        await smartDeposit.connect(landlord).deleteProperty(propertyId1)
+        
+        // Vérifier que la première propriété a été supprimée et la seconde existe toujours
+        const propertiesAfter = await smartDeposit.getLandlordProperties(landlord.address)
+        expect(propertiesAfter).to.not.include(propertyId1)
+        expect(propertiesAfter).to.include(propertyId2)
+        
+        // La longueur du tableau doit avoir diminué de 1
+        expect(propertiesAfter.length).to.equal(propertiesBefore.length - 1)
+      })
+    })
   })
 
   describe('3. Deposit Creation and Setup', function () {
     describe('Success Cases', function () {
+      it('should create deposit with correct parameters', async function () {
+        const { smartDeposit, landlord } = await loadFixture(deploySmartDepositFixture)
+        
+        // Créer une propriété
+        const { propertyId } = await createTestProperty(smartDeposit, landlord, "Test Property")
+        
+        // Créer un dépôt
+        const depositCode = "CODE123"
+        const tx = await smartDeposit.connect(landlord).createDeposit(propertyId, depositCode)
+        const receipt = await tx.wait()
+        
+        // Vérifier l'événement
+        const event = receipt?.logs[0] as EventLog
+        expect(event.eventName).to.equal('DepositCreated')
+        
+        const depositId = event.args[0]
+        
+        // Vérifier les données du dépôt
+        const deposit = await smartDeposit.getDeposit(depositId)
+        expect(deposit.propertyId).to.equal(propertyId)
+        expect(deposit.depositCode).to.equal(depositCode)
+        expect(deposit.status).to.equal(0) // PENDING
+        
+        // Vérifier que la propriété a bien été mise à jour
+        const property = await smartDeposit.getProperty(propertyId)
+        expect(property.currentDepositId).to.equal(depositId)
+      })
+
       it('should create deposit with initial zero amount', async function () {
         const { smartDeposit, landlord } = await loadFixture(deploySmartDepositFixture)
 
@@ -214,6 +363,147 @@ describe('SmartDeposit', function () {
         await expect(
           smartDeposit.connect(landlord).setDepositAmount(999n, ethers.parseEther("1"))
         ).to.be.revertedWith("Deposit does not exist")
+      })
+
+      it('should fail when creating deposit for non-existent property', async function () {
+        const { smartDeposit, landlord } = await loadFixture(deploySmartDepositFixture)
+        
+        // Tentative de créer un dépôt pour une propriété qui n'existe pas
+        const nonExistentPropertyId = 999n
+        
+        await expect(
+          smartDeposit.connect(landlord).createDeposit(nonExistentPropertyId, "CODE123")
+        ).to.be.revertedWith("Property does not exist")
+      })
+      
+      it('should fail when non-landlord tries to create deposit', async function () {
+        const { smartDeposit, landlord, tenant } = await loadFixture(deploySmartDepositFixture)
+        
+        // Créer une propriété
+        const { propertyId } = await createTestProperty(smartDeposit, landlord, "Test Property")
+        
+        // Tentative de création d'un dépôt par quelqu'un qui n'est pas le propriétaire
+        await expect(
+          smartDeposit.connect(tenant).createDeposit(propertyId, "CODE123")
+        ).to.be.revertedWith("Not the landlord")
+      })
+      
+      it('should fail when creating deposit for rented property', async function () {
+        const { smartDeposit, landlord, tenant } = await loadFixture(deploySmartDepositFixture)
+        
+        // Créer une propriété et un dépôt
+        const { depositId, propertyId, depositAmount } = await setupDeposit(smartDeposit, landlord)
+        
+        // Payer le dépôt pour que la propriété soit marquée comme louée
+        await smartDeposit.connect(tenant).payDeposit(depositId, "TEST123", {
+          value: depositAmount
+        })
+        
+        // Vérifier que la propriété est bien louée
+        const property = await smartDeposit.getProperty(propertyId)
+        expect(property.status).to.equal(1) // RENTED
+        
+        // Tentative de création d'un nouveau dépôt alors que la propriété est louée
+        await expect(
+          smartDeposit.connect(landlord).createDeposit(propertyId, "NEWCODE")
+        ).to.be.revertedWith("Property not available")
+      })
+      
+      it('should fail when previous deposit is not closed', async function () {
+        const { smartDeposit, landlord } = await loadFixture(deploySmartDepositFixture)
+        
+        // Créer une propriété et un dépôt (en attente)
+        const { depositId, propertyId } = await setupDeposit(smartDeposit, landlord, ethers.parseEther("1"), false)
+        
+        // Tentative de création d'un nouveau dépôt alors que le précédent n'est pas clos (PENDING ou PAID ou DISPUTED)
+        await expect(
+          smartDeposit.connect(landlord).createDeposit(propertyId, "NEWCODE")
+        ).to.be.revertedWith("Property already has an active deposit")
+      })
+
+      it('should allow creating new deposit after previous is REFUNDED', async function () {
+        const { smartDeposit, landlord, tenant } = await loadFixture(deploySmartDepositFixture)
+        
+        // Créer une propriété et un dépôt
+        const { depositId, propertyId, depositAmount } = await setupDeposit(smartDeposit, landlord)
+        
+        // Payer le dépôt
+        await smartDeposit.connect(tenant).payDeposit(depositId, "TEST123", {
+          value: depositAmount
+        })
+        
+        // Rembourser complètement le dépôt
+        await smartDeposit.connect(landlord).refundDeposit(depositId)
+        
+        // Vérifier que le dépôt est bien REFUNDED
+        const deposit = await smartDeposit.getDeposit(depositId)
+        expect(deposit.status).to.equal(5) // REFUNDED = 5
+        
+        // La création d'un nouveau dépôt devrait maintenant être possible
+        const newDepositTx = await smartDeposit.connect(landlord).createDeposit(propertyId, "NEWCODE")
+        const newDepositReceipt = await newDepositTx.wait()
+        
+        const event = newDepositReceipt?.logs[0] as EventLog
+        expect(event.eventName).to.equal('DepositCreated')
+      })
+      
+      it('should allow creating new deposit after previous is PARTIALLY_REFUNDED', async function () {
+        const { smartDeposit, landlord, tenant } = await loadFixture(deploySmartDepositFixture)
+        
+        // Créer une propriété et un dépôt
+        const { depositId, propertyId, depositAmount } = await setupDeposit(smartDeposit, landlord)
+        
+        // Payer le dépôt
+        await smartDeposit.connect(tenant).payDeposit(depositId, "TEST123", {
+          value: depositAmount
+        })
+        
+        // Initier un litige
+        await smartDeposit.connect(landlord).initiateDispute(depositId)
+        
+        // Résoudre le litige avec un remboursement partiel (50%)
+        const halfAmount = depositAmount / 2n
+        await smartDeposit.connect(landlord).resolveDispute(depositId, halfAmount)
+        
+        // Vérifier que le dépôt est bien PARTIALLY_REFUNDED
+        const deposit = await smartDeposit.getDeposit(depositId)
+        expect(deposit.status).to.equal(4) // PARTIALLY_REFUNDED = 4
+        
+        // La création d'un nouveau dépôt devrait maintenant être possible
+        const newDepositTx = await smartDeposit.connect(landlord).createDeposit(propertyId, "NEWCODE")
+        const newDepositReceipt = await newDepositTx.wait()
+        
+        const event = newDepositReceipt?.logs[0] as EventLog
+        expect(event.eventName).to.equal('DepositCreated')
+      })
+      
+      it('should allow creating new deposit after previous is RETAINED', async function () {
+        const { smartDeposit, landlord, tenant } = await loadFixture(deploySmartDepositFixture)
+        
+        // Créer une propriété et un dépôt
+        const { depositId, propertyId, depositAmount } = await setupDeposit(smartDeposit, landlord)
+        
+        // Payer le dépôt
+        await smartDeposit.connect(tenant).payDeposit(depositId, "TEST123", {
+          value: depositAmount
+        })
+        
+        // Initier un litige
+        await smartDeposit.connect(landlord).initiateDispute(depositId)
+        
+        // Résoudre le litige avec rétention complète du dépôt (0% remboursé)
+        await smartDeposit.connect(landlord).resolveDispute(depositId, 0n)
+        
+        // Vérifier que le dépôt est bien RETAINED
+        const deposit = await smartDeposit.getDeposit(depositId)
+        expect(deposit.status).to.equal(3) // RETAINED = 3
+        
+        // La création d'un nouveau dépôt devrait maintenant être possible
+        const newDepositTx = await smartDeposit.connect(landlord).createDeposit(propertyId, "NEWCODE")
+        const newDepositReceipt = await newDepositTx.wait()
+        
+        const event = newDepositReceipt?.logs[0] as EventLog
+        expect(event.eventName).to.equal('DepositCreated')
       })
     })
   })
@@ -299,6 +589,90 @@ describe('SmartDeposit', function () {
         await expect(
           addTestFile(smartDeposit, landlord, 999n)
         ).to.be.revertedWith("Deposit does not exist")
+      })
+    })
+  })
+
+  describe('5. Fallback and Receive Functions', function () {
+    it('should revert when calling non-existent function (fallback)', async function () {
+      const { smartDeposit, landlord } = await loadFixture(deploySmartDepositFixture)
+      
+      // Créer une signature de fonction qui n'existe pas
+      const nonExistentFunctionSignature = '0x12345678' // Signature hexadécimale arbitraire
+      
+      // Appeler la fonction inexistante, ce qui devrait déclencher le fallback
+      await expect(
+        landlord.sendTransaction({
+          to: await smartDeposit.getAddress(),
+          data: nonExistentFunctionSignature
+        })
+      ).to.be.revertedWith("Function does not exist")
+    })
+    
+    it('should emit Received event when sending ETH directly', async function () {
+      const { smartDeposit, tenant } = await loadFixture(deploySmartDepositFixture)
+      
+      // Envoyer de l'ETH directement au contrat
+      const tx = await tenant.sendTransaction({
+        to: await smartDeposit.getAddress(),
+        value: ethers.parseEther("0.1")
+      })
+      
+      const receipt = await tx.wait()
+      
+      // Vérifier que l'événement Received a été émis
+      expect(receipt?.logs.some(log => {
+        try {
+          const parsedLog = smartDeposit.interface.parseLog({
+            topics: log.topics,
+            data: log.data,
+          })
+          return parsedLog?.name === 'Received'
+        } catch {
+          return false
+        }
+      })).to.be.true
+    })
+  })
+
+  describe('6. Access Control Modifiers', function () {
+    describe('onlyTenant Modifier', function () {
+      it('should allow tenant to access restricted functions', async function () {
+        const { smartDeposit, landlord, tenant } = await loadFixture(deploySmartDepositFixture)
+        
+        // Créer une propriété et un dépôt
+        const { depositId, propertyId, depositAmount } = await setupDeposit(smartDeposit, landlord)
+        
+        // Payer le dépôt pour devenir locataire (en une seule transaction)
+        await smartDeposit.connect(tenant).payDeposit(depositId, "TEST123", {
+          value: depositAmount
+        })
+        
+        // Maintenant le tenant devrait pouvoir accéder à getPropertyIdFromDeposit
+        const result = await smartDeposit.connect(tenant).getPropertyIdFromDeposit(depositId)
+        expect(result).to.equal(propertyId)
+      })
+      
+      it('should revert when non-tenant tries to access restricted functions', async function () {
+        const { smartDeposit, landlord, tenant, other } = await loadFixture(deploySmartDepositFixture)
+        
+        // Créer une propriété et un dépôt
+        const { depositId, depositAmount } = await setupDeposit(smartDeposit, landlord)
+        
+        // Payer le dépôt pour que tenant devienne locataire (en une seule transaction)
+        await smartDeposit.connect(tenant).payDeposit(depositId, "TEST123", {
+          value: depositAmount
+        })
+        
+        // Maintenant un autre utilisateur ne devrait pas pouvoir accéder à getPropertyIdFromDeposit
+        await expect(
+          smartDeposit.connect(other).getPropertyIdFromDeposit(depositId)
+        ).to.be.revertedWith("Not the tenant")
+        
+        // Le propriétaire non plus ne devrait pas pouvoir accéder
+        await expect(
+          smartDeposit.connect(landlord).getPropertyIdFromDeposit(depositId)
+        ).to.be.revertedWith("Not the tenant")
       })
     })
   })
