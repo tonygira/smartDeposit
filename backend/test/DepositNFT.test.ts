@@ -329,6 +329,7 @@ describe("DepositNFT", function () {
 
   describe("Soul-Bound Token tests", function () {
     let tokenId: bigint;
+    let depositId: bigint;
     
     beforeEach(async function () {
       // Créer une propriété
@@ -338,7 +339,7 @@ describe("DepositNFT", function () {
       // Créer et payer une caution
       const depositCode = "123456";
       await smartDeposit.connect(landlord).createDeposit(propertyId, depositCode);
-      const depositId = 1;
+      depositId = 1n;
       const depositAmount = ethers.parseEther("1");
       await smartDeposit.connect(landlord).setDepositAmount(depositId, depositAmount);
       
@@ -372,6 +373,26 @@ describe("DepositNFT", function () {
       
       // Vérifier que le NFT est toujours détenu par le locataire
       expect(await depositNFT.ownerOf(tokenId)).to.equal(tenant.address);
+    });
+
+    it("Should not allow safeTransferFrom without data", async function () {
+      await expect(
+        depositNFT.connect(tenant)["safeTransferFrom(address,address,uint256)"](
+          tenant.address, 
+          landlord.address, 
+          tokenId
+        )
+      ).to.be.revertedWith("SBT: transfer not allowed");
+    });
+
+    it("Should prevent transfer even after refund", async function () {
+      // Rembourser la caution
+      await smartDeposit.connect(landlord).refundDeposit(depositId);
+      
+      // Tentative de transfert après remboursement
+      await expect(
+        depositNFT.connect(tenant).transferFrom(tenant.address, landlord.address, tokenId)
+      ).to.be.revertedWith("SBT: transfer not allowed");
     });
     
     it("Should not allow approve", async function () {
