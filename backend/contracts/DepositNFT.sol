@@ -285,28 +285,22 @@ contract DepositNFT is ERC721URIStorage, Ownable {
     ) internal pure returns (string memory) {
         // Conversion du montant de wei en ETH de manière sécurisée
         string memory amountInEth;
-        if (_amount > 0) {
-            // Diviser par 10^18 pour obtenir la valeur en ETH
-            uint256 ethWhole = _amount / 1 ether;
+        // Diviser par 10^18 pour obtenir la valeur en ETH
+        uint256 ethWhole = _amount / 1 ether;
+        // Calculer les décimales (4 chiffres après la virgule)
+        uint256 decimalFactor = 10000;
+        uint256 ethDecimal = (_amount % 1 ether) / (1 ether / decimalFactor);
 
-            // Calculer les décimales (4 chiffres après la virgule)
-            uint256 decimalFactor = 10000;
-            uint256 ethDecimal = (_amount % 1 ether) /
-                (1 ether / decimalFactor);
-
-            // Construire la chaîne avec 4 décimales
-            amountInEth = string.concat(
-                ethWhole.toString(),
-                ".",
-                ethDecimal < 10 ? "0" : "",
-                ethDecimal < 100 ? "0" : "",
-                ethDecimal < 1000 ? "0" : "",
-                ethDecimal.toString(),
-                " ETH"
-            );
-        } else {
-            amountInEth = "0.0000 ETH";
-        }
+        // Construire la chaîne avec 4 décimales
+        amountInEth = string.concat(
+            ethWhole.toString(),
+            ".",
+            ethDecimal < 10 ? "0" : "",
+            ethDecimal < 100 ? "0" : "",
+            ethDecimal < 1000 ? "0" : "",
+            ethDecimal.toString(),
+            " ETH"
+        );
 
         // Sélection de la couleur en fonction du statut
         // PAID(1) => violet, REFUNDED(5) => vert, PARTIALLY_REFUNDED(4) => jaune, RETAINED(3) => rouge, DISPUTED(2) => lightpink
@@ -354,14 +348,14 @@ contract DepositNFT is ERC721URIStorage, Ownable {
     /// @notice Convertit le statut en string
     function _getStatusString(
         uint256 status
-    ) internal pure returns (string memory) {
-        if (status == 0) return "En attente";
-        if (status == 1) return "Pay\\u00e9e";
-        if (status == 2) return "Disput\\u00e9e";
-        if (status == 3) return "Retenue";
-        if (status == 4) return "Partiellement rembours\\u00e9e";
-        if (status == 5) return "Rembours\\u00e9e";
-        return "Inconnu";
+    ) internal pure returns (string memory statusString) {
+        // inutile de tester (status == 0) car le NFT n'est créé que si la caution est payée
+        if (status == 1) statusString = "Pay\\u00e9e";
+        if (status == 2) statusString = "En litige";
+        if (status == 3) statusString = "Retenue";
+        if (status == 4) statusString = "Partiellement rembours\\u00e9e";
+        if (status == 5) statusString = "Rembours\\u00e9e";
+        return statusString;
     }
 
     /// @notice Convertit une adresse en string

@@ -31,6 +31,104 @@ describe("DepositNFT", function () {
     await depositNFT.connect(owner).transferOwnership(await smartDeposit.getAddress());
   });
 
+  // Fonction utilitaire pour créer un token avec depositId = 0
+  async function prepareNFTWithZeroDepositId() {
+    // Déployer un nouveau contrat DepositNFT
+    const DepositNFT = await ethers.getContractFactory("DepositNFT");
+    const customDepositNFT = await DepositNFT.deploy();
+    await customDepositNFT.waitForDeployment();
+    
+    // Initialiser le contrat
+    await customDepositNFT.initialize(owner.address);
+    
+    // Créer un token avec depositId = 0
+    const tx = await customDepositNFT.connect(owner).mintDepositNFT(0, tenant.address);
+    await tx.wait();
+    
+    // Récupérer le tokenId (premier token minté)
+    const tokenId = 1n;
+    
+    // Vérifier que le token appartient bien au tenant
+    expect(await customDepositNFT.ownerOf(tokenId)).to.equal(tenant.address);
+    
+    // Récupérer le depositId et vérifier qu'il est bien 0
+    const depositId = await customDepositNFT.getDepositIdFromToken(tokenId);
+    expect(depositId).to.equal(0n);
+    
+    return { customDepositNFT, tokenId };
+  }
+
+  describe("Initialization tests", function () {
+    let uninitializedDepositNFT: DepositNFT;
+    
+    beforeEach(async function () {
+      // Déployer un nouveau contrat DepositNFT qui ne sera pas initialisé
+      const DepositNFT = await ethers.getContractFactory("DepositNFT");
+      uninitializedDepositNFT = await DepositNFT.deploy();
+      await uninitializedDepositNFT.waitForDeployment();
+    });
+    
+    it("Should revert when calling mintDepositNFT on uninitialized contract", async function () {
+      await expect(
+        uninitializedDepositNFT.connect(owner).mintDepositNFT(1, tenant.address)
+      ).to.be.revertedWith("Contract not initialized");
+    });
+    
+    it("Should revert when calling updateTokenMetadata on uninitialized contract", async function () {
+      await expect(
+        uninitializedDepositNFT.connect(owner).updateTokenMetadata(1)
+      ).to.be.revertedWith("Contract not initialized");
+    });
+    
+    it("Should revert when calling getTokenIdFromDeposit on uninitialized contract", async function () {
+      await expect(
+        uninitializedDepositNFT.connect(owner).getTokenIdFromDeposit(1)
+      ).to.be.revertedWith("Contract not initialized");
+    });
+    
+    it("Should revert when calling getDepositIdFromToken on uninitialized contract", async function () {
+      await expect(
+        uninitializedDepositNFT.connect(owner).getDepositIdFromToken(1)
+      ).to.be.revertedWith("Contract not initialized");
+    });
+    
+    it("Should revert when calling tokenURI on uninitialized contract", async function () {
+      await expect(
+        uninitializedDepositNFT.connect(owner).tokenURI(1)
+      ).to.be.revertedWith("Contract not initialized");
+    });
+    
+    it("Should not allow initializing the contract twice", async function () {
+      // Initialiser d'abord le contrat
+      await uninitializedDepositNFT.connect(owner).initialize(await smartDeposit.getAddress());
+      
+      // Tenter de l'initialiser une seconde fois
+      await expect(
+        uninitializedDepositNFT.connect(owner).initialize(await smartDeposit.getAddress())
+      ).to.be.revertedWith("Contract already initialized");
+    });
+    
+    it("Should not allow initializing with zero address", async function () {
+      await expect(
+        uninitializedDepositNFT.connect(owner).initialize(ethers.ZeroAddress)
+      ).to.be.revertedWith("Invalid SmartDeposit address");
+    });
+    
+    it("Should not allow non-owner to initialize the contract", async function () {
+      // Tentative d'initialisation par un compte non-owner (tenant)
+      await expect(
+        uninitializedDepositNFT.connect(tenant).initialize(await smartDeposit.getAddress())
+      ).to.be.revertedWithCustomError(uninitializedDepositNFT, "OwnableUnauthorizedAccount")
+        .withArgs(tenant.address);
+      
+      // Tentative d'initialisation par un compte non-owner (landlord)
+      await expect(
+        uninitializedDepositNFT.connect(landlord).initialize(await smartDeposit.getAddress())
+      ).to.be.revertedWithCustomError(uninitializedDepositNFT, "OwnableUnauthorizedAccount")
+        .withArgs(landlord.address);
+    });
+  });
+
   describe("Minting", function () {
     it("Should mint NFT when deposit is paid", async function () {
       // Créer une propriété
@@ -88,6 +186,40 @@ describe("DepositNFT", function () {
       await expect(
         depositNFT.connect(tenant).mintDepositNFT(1, tenant.address)
       ).to.be.revertedWith("Only SmartDeposit can mint");
+    });
+
+    it("Should not mint with zero address as owner", async function () {
+      // Nous avons besoin de déployer un nouveau DepositNFT que nous pouvons contrôler directement
+      // pour simuler un appel depuis SmartDeposit mais avec une adresse zéro
+      const DepositNFT = await ethers.getContractFactory("DepositNFT");
+      const newDepositNFT = await DepositNFT.deploy();
+      await newDepositNFT.waitForDeployment();
+      
+      // Initialiser le contrat
+      await newDepositNFT.initialize(owner.address); // Nous utilisons owner comme SmartDeposit simulé
+      
+      // Appeler mintDepositNFT depuis "SmartDeposit" (owner) avec une adresse zéro
+      await expect(
+        newDepositNFT.connect(owner).mintDepositNFT(1, ethers.ZeroAddress)
+      ).to.be.revertedWith("Invalid owner address");
+    });
+
+    it("Should not mint NFT if it already exists for the deposit", async function () {
+      // Nous avons besoin de déployer un nouveau DepositNFT que nous pouvons contrôler directement
+      const DepositNFT = await ethers.getContractFactory("DepositNFT");
+      const newDepositNFT = await DepositNFT.deploy();
+      await newDepositNFT.waitForDeployment();
+      
+      // Initialiser le contrat
+      await newDepositNFT.initialize(owner.address); // Nous utilisons owner comme SmartDeposit simulé
+      
+      // Minter un NFT pour le dépôt #1
+      await newDepositNFT.connect(owner).mintDepositNFT(1, tenant.address);
+      
+      // Tenter de minter un autre NFT pour le même dépôt
+      await expect(
+        newDepositNFT.connect(owner).mintDepositNFT(1, landlord.address)
+      ).to.be.revertedWith("NFT already exists for this deposit");
     });
 
     it("Should not mint NFT when deposit amount is incorrect", async function () {
@@ -200,6 +332,25 @@ describe("DepositNFT", function () {
       expect(jsonData.image).to.not.be.undefined;
       // TODO : tests SVG
 
+    });
+
+    it("Should revert if token does not exist", async function () {
+      // Essayer d'obtenir l'URI d'un token qui n'existe pas
+      await expect(
+        depositNFT.tokenURI(999) // ID de token non existant
+      ).to.be.revertedWith("Token does not exist");
+    });
+
+    // Cas très particulier, il suppose qu'un problème est survenu lors de la création du NFT
+    // et que le mapping depositId -> tokenId n'est pas mis à jour.
+    it("Should revert if no deposit is associated with the token", async function () {
+      // Utiliser la fonction utilitaire pour préparer un NFT avec depositId = 0
+      const { customDepositNFT, tokenId } = await prepareNFTWithZeroDepositId();
+      
+      // Tenter d'obtenir l'URI du token - devrait échouer car aucun dépôt n'est associé
+      await expect(
+        customDepositNFT.tokenURI(tokenId)
+      ).to.be.revertedWith("No deposit associated with this token");
     });
 
     it("Should generate SVG with correct ID, amount and color based on status", async function () {
@@ -323,7 +474,7 @@ describe("DepositNFT", function () {
       
       // Vérifier le statut dans les métadonnées
       const statusAttr = jsonData.attributes.find((attr: any) => attr.trait_type === "Statut");
-      expect(statusAttr.value).to.equal("Disputée");
+      expect(statusAttr.value).to.equal("En litige");
     });
   });
 
@@ -351,7 +502,7 @@ describe("DepositNFT", function () {
       // Récupérer l'ID du token
       tokenId = await depositNFT.getTokenIdFromDeposit(depositId);
     });
-    
+
     it("Should not allow transfers", async function () {
       // Vérifier que le NFT appartient au locataire
       expect(await depositNFT.ownerOf(tokenId)).to.equal(tenant.address);
@@ -475,6 +626,21 @@ describe("DepositNFT", function () {
       // Vérifier que le tenant n'a plus le NFT
       expect(await depositNFT.balanceOf(tenant.address)).to.equal(0);
     });
+
+    // Ce cas est très spécial, il suppose qu'un problème est survenu lors de la création du NFT
+    // et que le mapping depositId -> tokenId n'est pas mis à jour.
+    it("Should handle burn correctly when depositId is 0", async function () {
+      const { customDepositNFT, tokenId } = await prepareNFTWithZeroDepositId();
+      
+      // Brûler le token - cela devrait fonctionner même si depositId est 0
+      await customDepositNFT.connect(tenant).burn(tokenId);
+      
+      // Vérifier que le token a bien été brûlé
+      await expect(customDepositNFT.ownerOf(tokenId)).to.be.reverted;
+      
+      // Vérifier que le tenant n'a plus de token
+      expect(await customDepositNFT.balanceOf(tenant.address)).to.equal(0);
+    });
   });
 
   describe("MetadataUpdate", function () {
@@ -533,6 +699,21 @@ describe("DepositNFT", function () {
       await expect(
         depositNFT.connect(tenant).updateTokenMetadata(depositId)
       ).to.be.revertedWith("Only SmartDeposit can update metadata");
+    });
+
+    it("Should fail if no NFT exists for the deposit ID", async function () {
+      // Nous avons besoin de déployer un nouveau DepositNFT que nous pouvons contrôler directement
+      const DepositNFT = await ethers.getContractFactory("DepositNFT");
+      const newDepositNFT = await DepositNFT.deploy();
+      await newDepositNFT.waitForDeployment();
+      
+      // Initialiser le contrat
+      await newDepositNFT.initialize(owner.address); // Nous utilisons owner comme SmartDeposit simulé
+      
+      // Tenter de mettre à jour les métadonnées d'un dépôt qui n'a pas de NFT
+      await expect(
+        newDepositNFT.connect(owner).updateTokenMetadata(999) // ID inexistant
+      ).to.be.revertedWith("No NFT found for this deposit");
     });
 
     it("Should emit MetadataUpdate event when refunding deposit", async function () {
