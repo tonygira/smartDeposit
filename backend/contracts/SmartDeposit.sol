@@ -280,7 +280,8 @@ contract SmartDeposit is Ownable {
             "Cannot delete property with deposit history"
         );
 
-        // Remove property from landlord's portfolio. NOTE: this will never be a long loop because the landlord can only have a few properties
+        // Remove property from landlord's portfolio. 
+        // NOTE: this will never be a long loop because the landlord can only have a few properties
         uint256[] storage landlordProps = landlordProperties[property.landlord];
         for (uint256 i = 0; i < landlordProps.length; i++) {
             if (landlordProps[i] == _propertyId) {
@@ -297,6 +298,7 @@ contract SmartDeposit is Ownable {
     /// @notice Creates a deposit for an existing property
     /// @dev Only the landlord can create a deposit for their property
     /// @dev The deposit can only be created if the property is not already rented
+    /// @dev The NOT_RENTED status also handles previous existing deposit that were resolved
     /// @param _propertyId ID of the property for which to create the deposit
     /// @param _depositCode Unique code that will be required for tenant payment
     /// @return depositId The ID of the newly created deposit
@@ -313,18 +315,10 @@ contract SmartDeposit is Ownable {
             properties[_propertyId].status == PropertyStatus.NOT_RENTED,
             "Property not available"
         );
-
-        // Vérifier que la caution précédente a été clôturée si elle existe
-        uint256 currentDepositId = properties[_propertyId].currentDepositId;
-        if (currentDepositId > 0) {
-            DepositStatus currentStatus = deposits[currentDepositId].status;
-            require(
-                currentStatus == DepositStatus.REFUNDED ||
-                    currentStatus == DepositStatus.PARTIALLY_REFUNDED ||
-                    currentStatus == DepositStatus.RETAINED,
-                "Previous deposit not closed"
-            );
-        }
+        require(
+            properties[_propertyId].currentDepositId == 0,
+            "Property already has an active deposit"
+        );
 
         depositCounter++;
         uint256 depositId = depositCounter;
@@ -344,10 +338,8 @@ contract SmartDeposit is Ownable {
 
         properties[_propertyId].currentDepositId = depositId; // update current deposit id
         propertyDeposits[_propertyId].push(depositId); // add deposit id to property deposits (record of all deposits)
-        properties[_propertyId].status = PropertyStatus.NOT_RENTED; // update property status: property is ready to be rented again
 
         emit DepositCreated(depositId, _propertyId, _depositCode);
-        emit PropertyStatusChanged(_propertyId, PropertyStatus.NOT_RENTED);
 
         return depositId;
     }
@@ -436,7 +428,7 @@ contract SmartDeposit is Ownable {
         property.status = PropertyStatus.NOT_RENTED;
         property.currentDepositId = 0; // Libère le bien pour une nouvelle caution
 
-        // Transfert de l'argent au locataire en utilisant call() au lieu de transfer()
+        // Transfer the initial deposit amount to the tenant
         (bool success, ) = payable(deposit.tenant).call{value: deposit.amount}(
             ""
         );
@@ -451,7 +443,7 @@ contract SmartDeposit is Ownable {
             deposit.amount
         );
 
-        // Mettre à jour les métadonnées du NFT
+        // Update the NFT metadata
         uint256 tokenId = depositNFT.getTokenIdFromDeposit(_depositId);
         if (tokenId > 0) {
             depositNFT.updateTokenMetadata(_depositId);
@@ -511,8 +503,9 @@ contract SmartDeposit is Ownable {
 
         deposit.finalAmount = _refundedAmount;
         deposit.refundDate = block.timestamp;
+        Property storage property = properties[deposit.propertyId];
 
-        if (_refundedAmount == deposit.amount) {
+        if (_refundedAmount == deposit.amount) {            // full refund
             deposit.status = DepositStatus.REFUNDED;
             (bool success, ) = payable(deposit.tenant).call{
                 value: _refundedAmount
@@ -521,10 +514,10 @@ contract SmartDeposit is Ownable {
             emit DepositRefunded(
                 _depositId,
                 deposit.tenant,
-                properties[deposit.propertyId].landlord,
+                property.landlord,
                 _refundedAmount
             );
-        } else if (_refundedAmount == 0) {
+        } else if (_refundedAmount == 0) {                // retained
             deposit.status = DepositStatus.RETAINED;
             (bool success, ) = payable(properties[deposit.propertyId].landlord)
                 .call{value: deposit.amount}("");
@@ -532,10 +525,10 @@ contract SmartDeposit is Ownable {
             emit DepositRetained(
                 _depositId,
                 deposit.tenant,
-                properties[deposit.propertyId].landlord,
+                property.landlord,
                 deposit.amount
             );
-        } else {
+        } else {                                        // partially refunded
             deposit.status = DepositStatus.PARTIALLY_REFUNDED;
             // Transférer au locataire
             (bool successTenant, ) = payable(deposit.tenant).call{
@@ -544,26 +537,27 @@ contract SmartDeposit is Ownable {
             require(successTenant, "Refund transfer to tenant failed");
 
             // Transférer au propriétaire
-            (bool successLandlord, ) = payable(
-                properties[deposit.propertyId].landlord
-            ).call{value: deposit.amount - _refundedAmount}("");
+            (bool successLandlord, ) = payable(property.landlord).call{
+                value: deposit.amount - _refundedAmount
+            }("");
             require(successLandlord, "Transfer to landlord failed");
             emit DepositPartiallyRefunded(
                 _depositId,
                 deposit.tenant,
-                properties[deposit.propertyId].landlord,
+                property.landlord,
                 _refundedAmount
             );
         }
 
-        properties[deposit.propertyId].status = PropertyStatus.NOT_RENTED;
-        properties[deposit.propertyId].currentDepositId = 0; // Libère le bien pour une nouvelle caution
+        property.status = PropertyStatus.NOT_RENTED;
+        property.currentDepositId = 0; // Libère le bien pour une nouvelle caution
 
         emit DisputeResolved(_depositId, deposit.status, _refundedAmount);
         emit PropertyStatusChanged(
             deposit.propertyId,
             PropertyStatus.NOT_RENTED
         );
+        emit DepositStatusChanged(_depositId, deposit.status);
 
         // Mettre à jour les métadonnées du NFT
         uint256 tokenId = depositNFT.getTokenIdFromDeposit(_depositId);
