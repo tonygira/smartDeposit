@@ -213,10 +213,10 @@ describe("DepositNFT", function () {
       // Initialiser le contrat
       await newDepositNFT.initialize(owner.address); // Nous utilisons owner comme SmartDeposit simulé
       
-      // Minter un NFT pour le dépôt #1
+      // Minter un NFT pour la caution #1
       await newDepositNFT.connect(owner).mintDepositNFT(1, tenant.address);
       
-      // Tenter de minter un autre NFT pour le même dépôt
+      // Tenter de minter un autre NFT pour la même caution
       await expect(
         newDepositNFT.connect(owner).mintDepositNFT(1, landlord.address)
       ).to.be.revertedWith("NFT already exists for this deposit");
@@ -347,7 +347,7 @@ describe("DepositNFT", function () {
       // Utiliser la fonction utilitaire pour préparer un NFT avec depositId = 0
       const { customDepositNFT, tokenId } = await prepareNFTWithZeroDepositId();
       
-      // Tenter d'obtenir l'URI du token - devrait échouer car aucun dépôt n'est associé
+      // Tenter d'obtenir l'URI du token - devrait échouer car aucune caution n'est associée
       await expect(
         customDepositNFT.tokenURI(tokenId)
       ).to.be.revertedWith("No deposit associated with this token");
@@ -597,9 +597,9 @@ describe("DepositNFT", function () {
     });
 
     it("Should clean up mappings when NFT is burned", async function () {
-      // Récupérer l'ID du dépôt avant de brûler
+      // Récupérer l'ID de la caution avant de brûler
       const depositId = await depositNFT.getDepositIdFromToken(tokenId);
-      expect(depositId).to.not.equal(0); // Vérifier qu'il y a bien un dépôt associé
+      expect(depositId).to.not.equal(0); // Vérifier qu'il y a bien une caution associée
       
       // Vérifier que le mapping deposit->token est correct
       const tokenIdBefore = await depositNFT.getTokenIdFromDeposit(depositId);
@@ -710,7 +710,7 @@ describe("DepositNFT", function () {
       // Initialiser le contrat
       await newDepositNFT.initialize(owner.address); // Nous utilisons owner comme SmartDeposit simulé
       
-      // Tenter de mettre à jour les métadonnées d'un dépôt qui n'a pas de NFT
+      // Tenter de mettre à jour les métadonnées d'une caution qui n'a pas de NFT
       await expect(
         newDepositNFT.connect(owner).updateTokenMetadata(999) // ID inexistant
       ).to.be.revertedWith("No NFT found for this deposit");

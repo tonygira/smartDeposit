@@ -280,7 +280,8 @@ contract SmartDeposit is Ownable {
             "Cannot delete property with deposit history"
         );
 
-        // Remove property from landlord's portfolio. NOTE: this will never be a long loop because the landlord can only have a few properties
+        // Remove property from landlord's portfolio. 
+        // NOTE: this will never be a long loop because the landlord can only have a few properties
         uint256[] storage landlordProps = landlordProperties[property.landlord];
         for (uint256 i = 0; i < landlordProps.length; i++) {
             if (landlordProps[i] == _propertyId) {
@@ -337,9 +338,9 @@ contract SmartDeposit is Ownable {
 
         properties[_propertyId].currentDepositId = depositId; // update current deposit id
         propertyDeposits[_propertyId].push(depositId); // add deposit id to property deposits (record of all deposits)
-        
+
         emit DepositCreated(depositId, _propertyId, _depositCode);
-        
+
         return depositId;
     }
 
@@ -427,7 +428,7 @@ contract SmartDeposit is Ownable {
         property.status = PropertyStatus.NOT_RENTED;
         property.currentDepositId = 0; // Libère le bien pour une nouvelle caution
 
-        // Transfert de l'argent au locataire 
+        // Transfer the initial deposit amount to the tenant
         (bool success, ) = payable(deposit.tenant).call{value: deposit.amount}(
             ""
         );
@@ -442,7 +443,7 @@ contract SmartDeposit is Ownable {
             deposit.amount
         );
 
-        // Mettre à jour les métadonnées du NFT
+        // Update the NFT metadata
         uint256 tokenId = depositNFT.getTokenIdFromDeposit(_depositId);
         if (tokenId > 0) {
             depositNFT.updateTokenMetadata(_depositId);
@@ -504,7 +505,7 @@ contract SmartDeposit is Ownable {
         deposit.refundDate = block.timestamp;
         Property storage property = properties[deposit.propertyId];
 
-        if (_refundedAmount == deposit.amount) {
+        if (_refundedAmount == deposit.amount) {            // full refund
             deposit.status = DepositStatus.REFUNDED;
             (bool success, ) = payable(deposit.tenant).call{
                 value: _refundedAmount
@@ -516,7 +517,7 @@ contract SmartDeposit is Ownable {
                 property.landlord,
                 _refundedAmount
             );
-        } else if (_refundedAmount == 0) {
+        } else if (_refundedAmount == 0) {                // retained
             deposit.status = DepositStatus.RETAINED;
             (bool success, ) = payable(properties[deposit.propertyId].landlord)
                 .call{value: deposit.amount}("");
@@ -527,7 +528,7 @@ contract SmartDeposit is Ownable {
                 property.landlord,
                 deposit.amount
             );
-        } else {
+        } else {                                        // partially refunded
             deposit.status = DepositStatus.PARTIALLY_REFUNDED;
             // Transférer au locataire
             (bool successTenant, ) = payable(deposit.tenant).call{
